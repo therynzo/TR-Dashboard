@@ -1,0 +1,209 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\PterodactylClient;
+use App\Support\ActivityLogger;
+use App\Support\Settings;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\View\View;
+use Throwable;
+
+class AdminSettingsController extends Controller
+{
+    public function branding(): View
+    {
+        return view('admin.settings.branding', ['settings' => $this->values()]);
+    }
+
+    public function saveBranding(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'brand_name' => ['required', 'string', 'max:60'],
+            'theme_color' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'announcement' => ['nullable', 'string', 'max:500'],
+            'discord_url' => ['nullable', 'url', 'max:255'],
+            'logo' => ['nullable', 'image', 'mimes:png,jpg,jpeg,webp', 'max:2048'],
+        ]);
+        foreach (['brand_name', 'theme_color', 'announcement', 'discord_url'] as $key) {
+            Settings::set($key, $data[$key] ?? '');
+        }
+        if ($request->hasFile('logo')) {
+            $path = $request->file('logo')->store('logos', 'public');
+            Settings::set('logo_url', Storage::url($path));
+        } elseif ($request->boolean('reset_logo')) {
+            // Reset any previously uploaded custom logo to the newly bundled user-provided mark.
+            Settings::set('logo_url', '/tr-logo.png');
+        }
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'branding_settings_updated', 'Updated dashboard branding settings.', $request);
+        return back()->with('success', 'Branding settings saved.');
+    }
+
+    public function pterodactyl(): View
+    {
+        $settings = $this->values();
+        $settings['ptero_api_key_configured'] = Settings::get('ptero_api_key', '') !== '';
+        return view('admin.settings.pterodactyl', ['settings' => $settings]);
+    }
+
+    public function savePterodactyl(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'ptero_url' => ['required', 'url', 'max:255'],
+            'ptero_api_key' => ['nullable', 'string', 'max:500'],
+            'ptero_nest_id' => ['nullable', 'integer', 'min:0'],
+            'ptero_egg_id' => ['required', 'integer', 'min:1'],
+            'ptero_allocation_id' => ['required', 'integer', 'min:1'],
+            'ptero_docker_image' => ['required', 'string', 'max:255'],
+            'ptero_startup' => ['required', 'string', 'max:2000'],
+            'ptero_environment' => ['required', 'string', 'max:10000'],
+            'ptero_memory' => ['required', 'integer', 'min:128'],
+            'ptero_disk' => ['required', 'integer', 'min:256'],
+            'ptero_cpu' => ['required', 'integer', 'min:1', 'max:10000'],
+            'ptero_swap' => ['required', 'integer', 'min:-1'],
+            'ptero_io' => ['required', 'integer', 'min:10', 'max:1000'],
+            'ptero_databases' => ['required', 'integer', 'min:0', 'max:100'],
+            'ptero_allocations' => ['required', 'integer', 'min:1', 'max:100'],
+            'ptero_backups' => ['required', 'integer', 'min:0', 'max:100'],
+        ]);
+        $environment = json_decode($data['ptero_environment'], true);
+        if (!is_array($environment) || array_is_list($environment)) {
+            return back()->withErrors(['ptero_environment' => 'Environment variables must be a valid JSON object, such as {"SERVER_JARFILE":"server.jar"}.'])->withInput();
+        }
+        $data['ptero_url'] = rtrim($data['ptero_url'], '/');
+        foreach ($data as $key => $value) {
+            if ($key === 'ptero_api_key') {
+                if (trim((string) $value) !== '') {
+                    Settings::set($key, trim((string) $value));
+                }
+                continue;
+            }
+            Settings::set($key, $value ?? '');
+        }
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_settings_saved', 'Saved Pterodactyl Application API settings.', $request);
+        return back()->with('success', 'Pterodactyl settings saved. Click “Test API connection” to verify the saved URL and key.');
+    }
+
+    public function testPterodactyl(Request $request, PterodactylClient $client): RedirectResponse
+    {
+        try {
+            $result = $client->testConnection();
+            ActivityLogger::record($request->user()->id, $request->user()->username, 'ptero_test', 'Tested Pterodactyl API connection: success.', $request);
+            return back()->with('success', $result['message']);
+        } catch (Throwable $e) {
+            report($e);
+            ActivityLogger::record($request->user()->id, $request->user()->username, 'ptero_test', 'Tested Pterodactyl API connection: failed.', $request);
+            return back()->with('error', 'Pterodactyl connection failed. Save the correct panel URL and an Application API key (usually ptla_...), then check storage/logs/laravel.log if it still fails.');
+        }
+    }
+
+    public function defaults(): View
+    {
+        return view('admin.settings.defaults', ['settings' => $this->values()]);
+    }
+
+    public function saveDefaults(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'default_credits' => ['required', 'numeric', 'min:0', 'max:999999999'],
+            'default_server_slots' => ['required', 'integer', 'min:0', 'max:10000'],
+            'server_create_cost' => ['required', 'numeric', 'min:0', 'max:999999999'],
+            'server_renew_cost' => ['required', 'numeric', 'min:0', 'max:999999999'],
+            'server_lifetime_hours' => ['required', 'integer', 'min:1', 'max:8760'],
+            'server_grace_days' => ['required', 'integer', 'min:1', 'max:365'],
+        ]);
+        foreach ($data as $key => $value) {
+            Settings::set($key, $value);
+        }
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'server_defaults_updated', 'Updated default credits, slots, costs, and server lifecycle settings.', $request);
+        return back()->with('success', 'Credit and server defaults saved. Existing user balances and current server expiry dates were not changed.');
+    }
+
+    public function authentication(): View
+    {
+        $settings = $this->values();
+        foreach (['discord', 'google'] as $provider) {
+            $settings[$provider . '_oauth_secret_configured'] = Settings::get($provider . '_oauth_secret', '') !== '';
+            $settings[$provider . '_callback_url'] = rtrim((string) config('app.url'), '/') . route('oauth.callback', ['provider' => $provider], false);
+        }
+        return view('admin.settings.authentication', ['settings' => $settings]);
+    }
+
+    public function saveAuthentication(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'discord_oauth_client_id' => ['nullable', 'string', 'max:255'],
+            'discord_oauth_secret' => ['nullable', 'string', 'max:1000'],
+            'google_oauth_client_id' => ['nullable', 'string', 'max:255'],
+            'google_oauth_secret' => ['nullable', 'string', 'max:1000'],
+        ]);
+        foreach (['discord', 'google'] as $provider) {
+            $enabled = $request->boolean($provider . '_oauth_enabled');
+            $clientId = trim((string) ($data[$provider . '_oauth_client_id'] ?? ''));
+            if ($clientId !== '') {
+                Settings::set($provider . '_oauth_client_id', $clientId);
+            }
+            $secretKey = $provider . '_oauth_secret';
+            $secret = trim((string) ($data[$secretKey] ?? ''));
+            if ($secret !== '') {
+                Settings::set($secretKey, $secret);
+            }
+            $effectiveId = trim((string) Settings::get($provider . '_oauth_client_id', ''));
+            $effectiveSecret = trim((string) Settings::get($secretKey, ''));
+            if ($enabled && ($effectiveId === '' || $effectiveSecret === '')) {
+                return back()->withErrors([$provider . '_oauth_client_id' => ucfirst($provider) . ' login cannot be enabled until both the Client ID and Client Secret have been saved.'])->withInput();
+            }
+            Settings::set($provider . '_oauth_enabled', $enabled ? '1' : '0');
+        }
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'oauth_settings_updated', 'Updated optional Discord and Google sign-in settings.', $request);
+        return back()->with('success', 'Authentication settings saved. Providers remain off unless their toggle is enabled.');
+    }
+
+    public function linkvertise(): View
+    {
+        $settings = $this->values();
+        $settings['linkvertise_token_configured'] = Settings::get('linkvertise_anti_bypass_token', '') !== '';
+        $settings['linkvertise_callback_url'] = rtrim((string) config('app.url'), '/') . route('linkvertise.complete', [], false);
+        return view('admin.settings.linkvertise', ['settings' => $settings]);
+    }
+
+    public function saveLinkvertise(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'linkvertise_publisher_id' => ['nullable', 'string', 'max:32', 'regex:/^[0-9]*$/'],
+            'linkvertise_url' => ['nullable', 'url', 'max:1000'],
+            'linkvertise_anti_bypass_token' => ['nullable', 'string', 'regex:/^[a-fA-F0-9]{64}$/'],
+            'linkvertise_reward_credits' => ['required', 'numeric', 'min:0.01', 'max:999999999'],
+            'linkvertise_daily_limit' => ['required', 'integer', 'min:1', 'max:100'],
+        ]);
+        if (!empty($data['linkvertise_url']) && !str_starts_with(strtolower($data['linkvertise_url']), 'https://')) {
+            return back()->withErrors(['linkvertise_url' => 'Use an HTTPS Linkvertise URL.'])->withInput();
+        }
+        $token = trim((string) ($data['linkvertise_anti_bypass_token'] ?? ''));
+        if ($token !== '') {
+            Settings::set('linkvertise_anti_bypass_token', $token);
+        }
+        foreach (['linkvertise_publisher_id', 'linkvertise_url', 'linkvertise_reward_credits', 'linkvertise_daily_limit'] as $key) {
+            Settings::set($key, $data[$key] ?? '');
+        }
+        $enabled = $request->boolean('linkvertise_enabled');
+        if ($enabled && (trim((string) Settings::get('linkvertise_url', '')) === '' || trim((string) Settings::get('linkvertise_anti_bypass_token', '')) === '')) {
+            Settings::set('linkvertise_enabled', '0');
+            return back()->withErrors(['linkvertise_url' => 'Before enabling rewards, save a Linkvertise HTTPS target URL and a valid 64-character hexadecimal anti-bypass token.'])->withInput();
+        }
+        Settings::set('linkvertise_enabled', $enabled ? '1' : '0');
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'linkvertise_settings_updated', 'Updated optional Linkvertise reward settings.', $request);
+        return back()->with('success', 'Linkvertise settings saved. Reward claims are verified server-side before credits are added.');
+    }
+
+    private function values(): array
+    {
+        $settings = Settings::defaults();
+        foreach (array_keys($settings) as $key) {
+            $settings[$key] = Settings::get($key, $settings[$key]);
+        }
+        return $settings;
+    }
+}
