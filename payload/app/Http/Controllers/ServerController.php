@@ -86,7 +86,6 @@ class ServerController extends Controller
             if (!$allocationIds) {
                 throw new RuntimeException('Pterodactyl returned free allocations without valid IDs. Check the node allocation configuration.');
             }
-            $allocationId = $allocationIds[0];
 
             $eggRecord = $pterodactyl->egg($nestId, $eggId);
             $eggAttributes = $eggRecord['attributes'] ?? [];
@@ -178,7 +177,7 @@ class ServerController extends Controller
                         'allocations' => (int) Settings::get('ptero_allocations', 1),
                         'backups' => (int) Settings::get('ptero_backups', 1),
                     ],
-                    'allocation' => ['default' => $allocationId],
+                    'allocation' => ['default' => $allocationIds[0]],
                 ];
 
                 $remote = null;
@@ -188,7 +187,7 @@ class ServerController extends Controller
                     try {
                         $remote = $pterodactyl->createServer($payload);
                         break;
-                    } catch (\\Illuminate\\Http\\Client\\RequestException $allocationException) {
+                    } catch (RequestException $allocationException) {
                         $statusCode = $allocationException->response?->status();
                         $errorText = strtolower((string) $allocationException->response?->body());
                         $isAllocationConflict = $statusCode === 422
