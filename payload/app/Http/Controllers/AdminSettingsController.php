@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\PterodactylClient;
+use Illuminate\Http\Client\RequestException;
 use App\Support\ActivityLogger;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
