@@ -116,29 +116,11 @@
     video.addEventListener('ended', finish, { once: true });
     video.addEventListener('error', finish, { once: true });
 
-    // The clip is stored in small base64 chunks in the public folder to make
-    // binary asset publication through GitHub Contents tooling reliable.
-    const videoParts = [
-        @json(asset('tr-login-intro-part-01.txt')),
-        @json(asset('tr-login-intro-part-02.txt')),
-        @json(asset('tr-login-intro-part-03.txt')),
-        @json(asset('tr-login-intro-part-04.txt')),
-        @json(asset('tr-login-intro-part-05.txt')),
-        @json(asset('tr-login-intro-part-06.txt'))
-    ];
+    // Attempt sound autoplay, then retry muted if browser policy blocks audible autoplay.
+    // Critical inline CSS above forces the video to cover the whole viewport regardless
+    // of cached external CSS or the original video's aspect ratio.
     const startVideo = async () => {
         try {
-            const contents = await Promise.all(videoParts.map(async (url) => {
-                const response = await fetch(url, { cache: 'force-cache', credentials: 'same-origin' });
-                if (!response.ok) throw new Error('Intro video part could not be loaded.');
-                return (await response.text()).trim();
-            }));
-            const encoded = contents.join('').replace(/\\s+/g, '');
-            const binary = atob(encoded);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
-            video.src = objectUrl;
             video.load();
             video.volume = 0.85;
             try {
