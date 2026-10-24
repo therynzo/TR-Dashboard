@@ -88,7 +88,6 @@ class Settings
             'ptero_node_id' => '',
             'ptero_nest_id' => '',
             'ptero_egg_id' => '',
-            'ptero_allocation_id' => '',
             'ptero_docker_image' => 'ghcr.io/pterodactyl/yolks:java_21',
             'ptero_startup' => 'java -Xms128M -XX:MaxRAMPercentage=95.0 -jar {{SERVER_JARFILE}}',
             'ptero_environment' => '{"SERVER_JARFILE":"server.jar","MINECRAFT_VERSION":"latest","BUILD_NUMBER":"latest"}',
