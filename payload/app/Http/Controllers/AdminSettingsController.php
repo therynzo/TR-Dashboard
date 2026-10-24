@@ -81,9 +81,6 @@ class AdminSettingsController extends Controller
             'ptero_node_id' => ['required', 'integer', 'min:1'],
             'ptero_nest_id' => ['required', 'integer', 'min:1'],
             'ptero_egg_id' => ['required', 'integer', 'min:1'],
-            'ptero_docker_image' => ['required', 'string', 'max:255'],
-            'ptero_startup' => ['required', 'string', 'max:2000'],
-            'ptero_environment' => ['required', 'string', 'max:10000'],
             'ptero_memory' => ['required', 'integer', 'min:128'],
             'ptero_disk' => ['required', 'integer', 'min:256'],
             'ptero_cpu' => ['required', 'integer', 'min:1', 'max:10000'],
@@ -94,17 +91,11 @@ class AdminSettingsController extends Controller
             'ptero_backups' => ['required', 'integer', 'min:0', 'max:100'],
         ]);
 
-        $environmentText = trim($data['ptero_environment']);
-        $environment = json_decode($environmentText, true);
-        if (!is_array($environment) || !str_starts_with($environmentText, '{')) {
-            return back()->withErrors(['ptero_environment' => 'Egg environment must be a valid JSON object.'])->withInput();
-        }
-
         foreach ($data as $key => $value) {
             Settings::set($key, $value);
         }
 
-        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_defaults_saved', 'Saved default Pterodactyl location, node, software, Egg, and server limits.', $request);
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_defaults_saved', 'Saved default Pterodactyl location, node, software, Egg, and server resource limits.', $request);
         return redirect()->route('admin.settings.pterodactyl')->with('success', 'Connection defaults saved. The server creation page will now use live panel options.');
     }
 
