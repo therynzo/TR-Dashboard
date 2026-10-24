@@ -118,8 +118,19 @@
   const image=Object.values(images)[0]||'';
   if (image) $('ptero_docker_image').value=image;
   if (egg.startup) $('ptero_startup').value=egg.startup;
+
+  let previousEnvironment={};
+  try { previousEnvironment=JSON.parse($('ptero_environment').value||'{}')||{}; } catch (_) {}
+  const safeDefaults={SERVER_JARFILE:'server.jar',BUILD_NUMBER:'latest',MINECRAFT_VERSION:'latest',SERVER_VERSION:'latest'};
   const env={};
-  (egg.variables||[]).forEach(v=> { if (v.env_variable) env[v.env_variable]=v.default_value??''; });
+  (egg.variables||[]).forEach(v=>{
+   if(!v.env_variable)return;
+   const key=String(v.env_variable);
+   const eggValue=String(v.default_value??'');
+   const configuredValue=String(previousEnvironment[key]??'');
+   const safeValue=String(safeDefaults[key]??'');
+   env[key]=eggValue.trim()!==''?v.default_value:(configuredValue.trim()!==''?configuredValue:safeValue);
+  });
   $('ptero_environment').value=JSON.stringify(env,null,2);
  }
  async function loadPanelData() {
