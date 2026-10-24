@@ -141,8 +141,8 @@
    const input=document.createElement('input');
    input.className='input';input.id='env_'+v.env_variable;input.name='environment['+v.env_variable+']';
    const eggDefault=String(v.default_value??'');
-   const adminDefault=String(adminEnvironmentDefaults[v.env_variable]??'');
-   const safeDefault=String(safeEnvironmentDefaults[v.env_variable]??'');
+   const adminDefault=String(adminEnvironmentDefaults[v.env_variable]??adminEnvironmentDefaults[String(v.env_variable).toUpperCase()]??'');
+   const safeDefault=String(safeEnvironmentDefaults[String(v.env_variable).toUpperCase()]??'');
    const chosenDefault=adminDefault.trim()!==''?adminDefault:(eggDefault.trim()!==''?eggDefault:safeDefault);
    input.value=chosenDefault;input.maxLength=2000;input.autocomplete='off';
    const required=String(v.rules||'').split('|').some(rule=>rule==='required');
