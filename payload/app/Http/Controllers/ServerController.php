@@ -153,7 +153,9 @@ class ServerController extends Controller
 
             $nestName = (string) data_get($nest, 'attributes.name', 'Software');
             $eggName = (string) ($eggAttributes['name'] ?? 'Egg');
-            $isMinecraftEgg = str_contains(strtolower($nestName . ' ' . $eggName), 'minecraft');
+            $softwareLabel = strtolower($nestName . ' ' . $eggName);
+            $isMinecraftEgg = str_contains($softwareLabel, 'minecraft')
+                || preg_match('/\\b(paper|purpur|spigot|craftbukkit|vanilla|fabric|forge|folia)\\b/i', $softwareLabel) === 1;
 
             // Some exported Paper/Minecraft Eggs incorrectly omit the default for
             // these common required variables. Pterodactyl requires values at create.
