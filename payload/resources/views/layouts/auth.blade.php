@@ -25,7 +25,7 @@
 </head>
 <body class="auth-body">
 <div class="tr-auth-intro" id="trAuthIntro" aria-label="TR Dashboard intro" aria-hidden="false">
-    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" poster="{{ asset('tr-auth-wallpaper.svg') }}">
+    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" src="{{ asset('tr-login-intro.mp4') }}" poster="{{ asset('tr-auth-wallpaper.svg') }}">
     </video>
     <div class="tr-auth-intro-shade" aria-hidden="true"></div>
     <div class="tr-auth-intro-brand">
@@ -106,46 +106,31 @@
     video.addEventListener('ended', finish, { once: true });
     video.addEventListener('error', finish, { once: true });
 
-    // The MP4 is split into small text parts for reliable repository upload, then
-    // reconstructed locally in the browser. No external video host is required.
-    const parts = [
-        '/tr-login-intro-part-01.txt',
-        '/tr-login-intro-part-02.txt',
-        '/tr-login-intro-part-03.txt',
-        '/tr-login-intro-part-04.txt'
-    ];
-    async function startVideo() {
+    // Try audible autoplay first; browsers may require a user gesture for sound.
+    video.volume = 0.85;
+    let playFallbackTimer = window.setTimeout(finish, 18000);
+    const startVideo = async () => {
         try {
-            const contents = await Promise.all(parts.map(async url => {
-                const response = await fetch(url, { cache: 'force-cache', credentials: 'same-origin' });
-                if (!response.ok) throw new Error('Intro media part unavailable: ' + url);
-                return (await response.text()).trim();
-            }));
-            const encoded = contents.join('').replace(/\s+/g, '');
-            const binary = atob(encoded);
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            const blob = new Blob([bytes], { type: 'video/mp4' });
-            objectUrl = URL.createObjectURL(blob);
-            video.src = objectUrl;
             video.load();
-            video.volume = 0.85;
             try {
                 await video.play();
             } catch (_) {
                 video.muted = true;
-                if (soundButton) soundButton.hidden = false;
-                try { await video.play(); } catch (_) {
+                if (soundButton) {
+                    soundButton.hidden = false;
+                    soundButton.textContent = 'Enable sound';
+                }
+                try {
+                    await video.play();
+                } catch (_) {
                     if (soundButton) soundButton.textContent = 'Play intro with sound';
-                    throw new Error('Browser could not autoplay the intro.');
+                    finish();
                 }
             }
-            fallbackTimer = window.setTimeout(finish, 18000);
         } catch (_) {
-            // Keep login/register usable even if media is blocked or unavailable.
             finish();
         }
-    }
+    };
     startVideo();
 })();
 </script>
