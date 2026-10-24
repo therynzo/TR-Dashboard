@@ -60,6 +60,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/', [AdminController::class, 'overview'])->name('overview');
         Route::get('/users', [AdminController::class, 'users'])->name('users');
         Route::post('/users/{user}', [AdminController::class, 'updateUser'])->name('users.update');
+        Route::delete('/users/{user}', [AdminController::class, 'deleteUser'])->name('users.delete');
         Route::get('/servers', [AdminController::class, 'servers'])->name('servers');
         Route::post('/servers/{server}/suspend', [AdminController::class, 'suspendServer'])->name('servers.suspend');
         Route::delete('/servers/{server}', [AdminController::class, 'deleteServer'])->name('servers.delete');
