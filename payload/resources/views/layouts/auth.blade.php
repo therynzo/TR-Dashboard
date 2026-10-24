@@ -35,7 +35,7 @@
 </head>
 <body class="auth-body">
 <div class="tr-auth-intro" id="trAuthIntro" aria-label="TR Dashboard intro" aria-hidden="false">
-    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" src="{{ asset('tr-login-intro.mp4') }}" poster="{{ asset('tr-auth-wallpaper.svg') }}">
+    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto"  poster="{{ asset('tr-auth-wallpaper.svg') }}">
     </video>
     <div class="tr-auth-intro-shade" aria-hidden="true"></div>
     <div class="tr-auth-intro-brand">
@@ -116,12 +116,31 @@
     video.addEventListener('ended', finish, { once: true });
     video.addEventListener('error', finish, { once: true });
 
-    // Try audible autoplay first; browsers may require a user gesture for sound.
-    video.volume = 0.85;
-    fallbackTimer = window.setTimeout(finish, 18000);
+    // The clip is stored in small base64 chunks in the public folder to make
+    // binary asset publication through GitHub Contents tooling reliable.
+    const videoParts = [
+        @json(asset('tr-login-intro-part-01.txt')),
+        @json(asset('tr-login-intro-part-02.txt')),
+        @json(asset('tr-login-intro-part-03.txt')),
+        @json(asset('tr-login-intro-part-04.txt')),
+        @json(asset('tr-login-intro-part-05.txt')),
+        @json(asset('tr-login-intro-part-06.txt'))
+    ];
     const startVideo = async () => {
         try {
+            const contents = await Promise.all(videoParts.map(async (url) => {
+                const response = await fetch(url, { cache: 'force-cache', credentials: 'same-origin' });
+                if (!response.ok) throw new Error('Intro video part could not be loaded.');
+                return (await response.text()).trim();
+            }));
+            const encoded = contents.join('').replace(/\\s+/g, '');
+            const binary = atob(encoded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+            video.src = objectUrl;
             video.load();
+            video.volume = 0.85;
             try {
                 await video.play();
             } catch (_) {
@@ -137,7 +156,8 @@
                     finish();
                 }
             }
-        } catch (_) {
+        } catch (error) {
+            console.error('TR Dashboard intro playback failed:', error);
             finish();
         }
     };
