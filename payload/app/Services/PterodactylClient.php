@@ -124,6 +124,14 @@ class PterodactylClient
         return $id;
     }
 
+    public function deleteUser(int $userId): void
+    {
+        if ($userId < 1) {
+            throw new RuntimeException('Invalid Pterodactyl user ID.');
+        }
+        $this->request()->delete('users/' . $userId)->throw();
+    }
+
     public function updateUser(int $userId, array $payload): void
     {
         $this->request()->patch('users/' . $userId, $payload)->throw();
