@@ -60,6 +60,8 @@
  const allocationPreview=$('allocationPreview');
  const status=$('pteroCreateStatus');
  const envContainer=$('pteroEnvironmentFields');
+ const adminEnvironmentDefaults=@json(json_decode((string) \App\Support\Settings::get('ptero_environment','{}'),true) ?: []);
+ const safeEnvironmentDefaults={SERVER_JARFILE:'server.jar',BUILD_NUMBER:'latest',MINECRAFT_VERSION:'latest',SERVER_VERSION:'latest'};
  const saved={
   location:@json((string) old('location_id',\App\Support\Settings::get('ptero_location_id',''))),
   node:@json((string) old('node_id',\App\Support\Settings::get('ptero_node_id',''))),
@@ -138,11 +140,20 @@
    if(v.description){const help=document.createElement('div');help.className='field-help';help.textContent=v.description;row.appendChild(help);}
    const input=document.createElement('input');
    input.className='input';input.id='env_'+v.env_variable;input.name='environment['+v.env_variable+']';
-   input.value=v.default_value??'';input.maxLength=2000;input.autocomplete='off';
-   const required=String(v.rules||'').split('|').includes('required');
+   const eggDefault=String(v.default_value??'');
+   const adminDefault=String(adminEnvironmentDefaults[v.env_variable]??'');
+   const safeDefault=String(safeEnvironmentDefaults[v.env_variable]??'');
+   const chosenDefault=adminDefault.trim()!==''?adminDefault:(eggDefault.trim()!==''?eggDefault:safeDefault);
+   input.value=chosenDefault;input.maxLength=2000;input.autocomplete='off';
+   const required=String(v.rules||'').split('|').some(rule=>rule==='required');
    if(v.user_editable){input.type='text';if(required)input.required=true;}
    else if(v.user_viewable){input.type='text';input.readOnly=true;}
    else {input.type='hidden';}
+   if(required && !String(chosenDefault).trim() && !v.user_editable) {
+    const warning=document.createElement('p');warning.className='field-help';warning.style.color='#ff7b89';
+    warning.textContent='Required Egg variable '+(v.name||v.env_variable)+' has no default. Ask the administrator to configure it in Pterodactyl API settings.';
+    row.appendChild(warning);
+   }
    row.appendChild(input);envContainer.appendChild(row);shown++;
   });
   if(!shown){const help=document.createElement('p');help.className='field-help';help.textContent='This Egg does not expose user-editable environment variables.';envContainer.appendChild(help);}
