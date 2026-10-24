@@ -250,7 +250,7 @@ class AdminSettingsController extends Controller
                 'hash' => $randomHash,
             ], '', '&', PHP_QUERY_RFC3986);
             $response = Http::connectTimeout(3)->timeout(8)->post($verifyUrl);
-            $body = strtoupper(trim(trim($response->body()), " \\t\\n\\r\\0\\x0B\\\"'"));
+            $body = strtoupper(trim(trim($response->body()), " \t\n\r\0\x0B\"'"));
 
             if (!$response->successful()) {
                 return back()->with('error', 'Linkvertise API returned HTTP ' . $response->status() . '. The token could not be confirmed. This can be a provider/network issue; retry shortly. No credits were awarded.');
