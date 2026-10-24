@@ -73,3 +73,7 @@ Please respect the developer's work and give credit where it is due.
 **Official creator:** TheRynzo  
 **Repository:** https://github.com/therynzo/TR-Dashboard
 
+
+### Pterodactyl deployment defaults
+
+In **Admin → Settings → Pterodactyl API**, select and save the default location, node, software category, Egg, and resource limits. Docker image, startup command, and Egg environment variables are taken from the selected Egg automatically; these are not manual admin fields. Customer server creation uses the administrator-selected default node/location, displays software choices, and selects a free allocation automatically. Required Egg variables are loaded from the Application API relationships, with safe defaults for common Minecraft Java values such as `SERVER_JARFILE` and `BUILD_NUMBER` when an Egg leaves them blank.
