@@ -118,7 +118,7 @@ class AdminSettingsController extends Controller
         } catch (Throwable $e) {
             report($e);
             ActivityLogger::record($request->user()->id, $request->user()->username, 'ptero_test', 'Tested Pterodactyl API connection: failed.', $request);
-            if ($e instanceof \\Illuminate\\Http\\Client\\RequestException && $e->response) {
+            if ($e instanceof \Illuminate\Http\Client\RequestException && $e->response) {
                 $status = $e->response->status();
                 $message = match ($status) {
                     401 => 'Connection failed (HTTP 401): the Application API key was rejected. Create a Pterodactyl Application API key (ptla_...) and save it again.',
