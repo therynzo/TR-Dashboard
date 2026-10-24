@@ -108,7 +108,7 @@
 
     // Try audible autoplay first; browsers may require a user gesture for sound.
     video.volume = 0.85;
-    let playFallbackTimer = window.setTimeout(finish, 18000);
+    fallbackTimer = window.setTimeout(finish, 18000);
     const startVideo = async () => {
         try {
             video.load();
