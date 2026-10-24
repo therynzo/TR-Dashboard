@@ -6,6 +6,7 @@ use App\Models\CreditTransaction;
 use App\Support\ActivityLogger;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -14,6 +15,35 @@ use Throwable;
 
 class LinkvertiseController extends Controller
 {
+    /**
+     * Live per-user reward status for the Credits page. This endpoint is authenticated
+     * and does not expose publisher credentials or the anti-bypass token.
+     */
+    public function status(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $dailyLimit = max(1, (int) Settings::get('linkvertise_daily_limit', 1));
+        $claimedToday = CreditTransaction::query()
+            ->where('user_id', $user->id)
+            ->where('type', 'linkvertise_reward')
+            ->where('created_at', '>=', now()->startOfDay())
+            ->count();
+
+        $configured = Settings::enabled('linkvertise_enabled')
+            && trim((string) Settings::get('linkvertise_publisher_id', '')) !== ''
+            && trim((string) Settings::get('linkvertise_url', '')) !== ''
+            && trim((string) Settings::get('linkvertise_anti_bypass_token', '')) !== '';
+
+        return response()->json([
+            'enabled' => $configured,
+            'claimed_today' => $claimedToday,
+            'daily_limit' => $dailyLimit,
+            'remaining' => max(0, $dailyLimit - $claimedToday),
+            'reward_credits' => max(0, (float) Settings::get('linkvertise_reward_credits', 10)),
+            'updated_at' => now()->toIso8601String(),
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
     public function start(Request $request): RedirectResponse
     {
         $this->assertEnabled();
