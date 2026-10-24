@@ -53,7 +53,32 @@ class AdminSettingsController extends Controller
         $data = $request->validate([
             'ptero_url' => ['required', 'url', 'max:255'],
             'ptero_api_key' => ['nullable', 'string', 'max:500'],
-            'ptero_nest_id' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $url = rtrim(trim($data['ptero_url']), '/');
+        $url = preg_replace('#/api/application$#i', '', $url) ?? $url;
+        $url = preg_replace('#/api/client$#i', '', $url) ?? $url;
+
+        $key = trim((string) ($data['ptero_api_key'] ?? ''));
+        if ($key === '' && trim((string) Settings::get('ptero_api_key', '')) === '') {
+            return back()->withErrors(['ptero_api_key' => 'Enter an Application API key before saving the connection.'])->withInput();
+        }
+
+        Settings::set('ptero_url', $url);
+        if ($key !== '') {
+            Settings::set('ptero_api_key', $key);
+        }
+
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_connection_saved', 'Saved the Pterodactyl panel URL and Application API key.', $request);
+        return redirect()->route('admin.settings.pterodactyl')->with('success', 'Panel URL and API key saved. Next, click Test API connection, then Load panel data to select the node, software, and allocation.');
+    }
+
+    public function savePterodactylDefaults(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'ptero_location_id' => ['required', 'integer', 'min:1'],
+            'ptero_node_id' => ['required', 'integer', 'min:1'],
+            'ptero_nest_id' => ['required', 'integer', 'min:1'],
             'ptero_egg_id' => ['required', 'integer', 'min:1'],
             'ptero_allocation_id' => ['required', 'integer', 'min:1'],
             'ptero_docker_image' => ['required', 'string', 'max:255'],
@@ -68,22 +93,19 @@ class AdminSettingsController extends Controller
             'ptero_allocations' => ['required', 'integer', 'min:1', 'max:100'],
             'ptero_backups' => ['required', 'integer', 'min:0', 'max:100'],
         ]);
-        $environment = json_decode($data['ptero_environment'], true);
-        if (!is_array($environment) || array_is_list($environment)) {
-            return back()->withErrors(['ptero_environment' => 'Environment variables must be a valid JSON object, such as {"SERVER_JARFILE":"server.jar"}.'])->withInput();
+
+        $environmentText = trim($data['ptero_environment']);
+        $environment = json_decode($environmentText, true);
+        if (!is_array($environment) || !str_starts_with($environmentText, '{')) {
+            return back()->withErrors(['ptero_environment' => 'Egg environment must be a valid JSON object.'])->withInput();
         }
-        $data['ptero_url'] = rtrim($data['ptero_url'], '/');
+
         foreach ($data as $key => $value) {
-            if ($key === 'ptero_api_key') {
-                if (trim((string) $value) !== '') {
-                    Settings::set($key, trim((string) $value));
-                }
-                continue;
-            }
-            Settings::set($key, $value ?? '');
+            Settings::set($key, $value);
         }
-        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_settings_saved', 'Saved Pterodactyl Application API settings.', $request);
-        return back()->with('success', 'Pterodactyl settings saved. Click “Test API connection” to verify the saved URL and key.');
+
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_defaults_saved', 'Saved default Pterodactyl location, node, software, Egg, allocation, and server limits.', $request);
+        return redirect()->route('admin.settings.pterodactyl')->with('success', 'Connection defaults saved. The server creation page will now use live panel options.');
     }
 
     public function testPterodactyl(Request $request, PterodactylClient $client): RedirectResponse
@@ -95,7 +117,19 @@ class AdminSettingsController extends Controller
         } catch (Throwable $e) {
             report($e);
             ActivityLogger::record($request->user()->id, $request->user()->username, 'ptero_test', 'Tested Pterodactyl API connection: failed.', $request);
-            return back()->with('error', 'Pterodactyl connection failed. Save the correct panel URL and an Application API key (usually ptla_...), then check storage/logs/laravel.log if it still fails.');
+            if ($e instanceof \\Illuminate\\Http\\Client\\RequestException && $e->response) {
+                $status = $e->response->status();
+                $message = match ($status) {
+                    401 => 'Connection failed (HTTP 401): the Application API key was rejected. Create a Pterodactyl Application API key (ptla_...) and save it again.',
+                    403 => 'Connection failed (HTTP 403): the API key is valid but lacks permission to read Application API users/nodes. Check key permissions.',
+                    404 => 'Connection failed (HTTP 404): check that the URL is the panel root URL, e.g. https://panel.example.com, not /api/client.',
+                    429 => 'Connection failed (HTTP 429): Pterodactyl rate-limited the request. Wait and retry.',
+                    default => 'Pterodactyl API returned HTTP ' . $status . '. Check the Pterodactyl panel log for details.',
+                };
+                return back()->with('error', $message);
+            }
+            $message = mb_substr($e->getMessage() ?: 'Could not connect to Pterodactyl.', 0, 240);
+            return back()->with('error', 'Pterodactyl connection failed: ' . $message);
         }
     }
 
