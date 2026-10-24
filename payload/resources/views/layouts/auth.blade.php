@@ -25,7 +25,7 @@
 </head>
 <body class="auth-body">
 <div class="tr-auth-intro" id="trAuthIntro" aria-label="TR Dashboard intro" aria-hidden="false">
-    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" poster="{{ asset('tr-auth-wallpaper.webp') }}">
+    <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" poster="{{ asset('tr-auth-wallpaper.svg') }}">
         <source src="{{ asset('tr-login-intro.mp4') }}" type="video/mp4">
     </video>
     <div class="tr-auth-intro-shade" aria-hidden="true"></div>
