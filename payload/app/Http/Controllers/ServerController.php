@@ -98,7 +98,7 @@ class ServerController extends Controller
                     throw new RuntimeException('The required Egg variable "' . $key . '" is empty. Choose another Egg or ask the administrator to configure a default value.');
                 }
                 if ($editable) {
-                    $validator = \\Illuminate\\Support\\Facades\\Validator::make([$key => $value], [$key => $rules]);
+                    $validator = \Illuminate\Support\Facades\Validator::make([$key => $value], [$key => $rules]);
                     if ($validator->fails()) {
                         throw new RuntimeException('Invalid value for Egg variable "' . $key . '": ' . $validator->errors()->first($key));
                     }
@@ -182,7 +182,7 @@ class ServerController extends Controller
             return redirect()->route('servers.show', $server)->with('success', 'Your server has been deployed in Pterodactyl.');
         } catch (Throwable $e) {
             report($e);
-            if ($e instanceof \\Illuminate\\Http\\Client\\RequestException && $e->response) {
+            if ($e instanceof \Illuminate\Http\Client\RequestException && $e->response) {
                 $status = $e->response->status();
                 $message = match ($status) {
                     401 => 'Pterodactyl rejected the Application API key (HTTP 401). Re-save the key in Admin → Pterodactyl API.',
