@@ -69,7 +69,8 @@
     const video = document.getElementById('trAuthIntroVideo');
     const soundButton = document.getElementById('trAuthSound');
     const skipButton = document.getElementById('trAuthSkip');
-    if (!overlay || !video || !root.classList.contains('tr-intro-pending')) return;
+    if (!overlay || !video) return;
+    if (!root.classList.contains('tr-intro-pending')) { overlay.hidden = true; overlay.setAttribute('aria-hidden', 'true'); return; }
 
     // Record the intro once per tab session so refreshes won't restart it.
     const markSeen = () => {
