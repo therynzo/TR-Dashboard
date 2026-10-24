@@ -80,7 +80,7 @@
   select.replaceChildren();
   const first=document.createElement('option');first.value='';first.textContent=placeholder;select.appendChild(first);
   items.forEach(item=>{
-   const o=document.createElement('option');o.value=String(item.id);o.textContent=label(item);o.disabled=disabled(item);
+   const o=document.createElement('option');o.value=String(item.id);o.textContent=label(item);o.disabled=typeof disabled==='function'?Boolean(disabled(item)):Boolean(disabled);
    if(String(item.id)===String(selected))o.selected=true;
    select.appendChild(o);
   });
