@@ -67,7 +67,9 @@ class LinkvertiseController extends Controller
             }
         }
 
-        if (!preg_match('/^[a-fA-F0-9]{64}$/', $hash)) {
+        // Linkvertise documents the hash as an opaque 64-character string, not specifically hexadecimal.
+        // Only enforce its documented length and printable non-space ASCII; provider verification remains mandatory.
+        if (strlen($hash) !== 64 || !preg_match('/^[\x21-\x7E]{64}$/', $hash)) {
             $hashPresent = $hash !== '';
             $queryKeys = array_slice(array_map('strval', array_keys($query)), 0, 20);
             logger()->notice('Linkvertise return did not include a valid completion hash.', [
@@ -78,7 +80,7 @@ class LinkvertiseController extends Controller
             ]);
 
             $message = $hashPresent
-                ? 'Linkvertise returned a hash, but it was not a valid 64-character hexadecimal value. Start a fresh task from Credits and return immediately; Linkvertise hashes expire after about 10 seconds. No credits were added.'
+                ? 'Linkvertise returned a hash with an invalid format or length. Start a fresh task from Credits and return immediately; Linkvertise hashes expire after about 10 seconds. No credits were added.'
                 : 'Linkvertise sent you back without a ?hash=... parameter, so no credits were added. In Linkvertise, make sure this is a Target Link (not a Paste Link), Anti-Bypassing is enabled and saved, and its Target URL is exactly the Verified completion target URL shown in Admin → Linkvertise Rewards. Do not open the callback URL directly. Start a fresh task from Credits after correcting it.';
             return redirect()->route('credits')->with('error', $message);
         }
