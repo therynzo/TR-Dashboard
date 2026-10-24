@@ -101,7 +101,7 @@
   }
   allocationPreview.textContent='Checking free allocations on the selected node…';
   const items=await fetchData('allocations',{node_id:nodeId});
-  const free=items.filter(x=>!x.assigned).sort((a,b)=>(Number(a.port)||0)-(Number(b.port)||0));
+  const free=items.filter(x=>!x.assigned).sort((a,b)=>(Number(a.id)||0)-(Number(b.id)||0));
   if(!free.length) {
    allocationPreview.textContent='No free allocation is currently available on this node. Choose another node or ask the administrator to add free allocations.';
    return;
