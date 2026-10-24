@@ -35,8 +35,6 @@ class ServerController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'min:3', 'max:40', 'regex:/^[A-Za-z0-9 _.-]+$/'],
-            'location_id' => ['required', 'integer', 'min:1'],
-            'node_id' => ['required', 'integer', 'min:1'],
             'nest_id' => ['required', 'integer', 'min:1'],
             'egg_id' => ['required', 'integer', 'min:1'],
             'environment' => ['nullable', 'array'],
@@ -46,10 +44,16 @@ class ServerController extends Controller
 
         try {
             // Validate every selected value against the live panel; do not trust dropdown IDs from the browser.
-            $locationId = (int) $data['location_id'];
-            $nodeId = (int) $data['node_id'];
+            // Customers never select infrastructure. The administrator's saved
+            // default location/node is authoritative for every deployment.
+            $locationId = (int) Settings::get('ptero_location_id', 0);
+            $nodeId = (int) Settings::get('ptero_node_id', 0);
             $nestId = (int) $data['nest_id'];
             $eggId = (int) $data['egg_id'];
+
+            if ($locationId < 1 || $nodeId < 1) {
+                throw new RuntimeException('The administrator has not configured a default Pterodactyl location and node yet.');
+            }
 
             $locations = $pterodactyl->locations();
             $locationExists = collect($locations)->contains(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $locationId);
@@ -110,7 +114,7 @@ class ServerController extends Controller
             ];
 
             $environment = [];
-            $variables = data_get($eggRecord, 'relationships.variables.data', []);
+            $variables = data_get($eggRecord, 'relationships.variables.data', data_get($eggRecord, 'attributes.relationships.variables.data', []));
             foreach ($variables as $variable) {
                 $v = $variable['attributes'] ?? [];
                 $key = (string) ($v['env_variable'] ?? '');
@@ -126,7 +130,7 @@ class ServerController extends Controller
                 } elseif ($configuredDefault !== '') {
                     // Use administrator-configured environment defaults when the selected
                     // Egg itself leaves a required value blank.
-                    $value = (string) $configuredEnvironment[$key];
+                    $value = (string) ($configuredEnvironment[$key] ?? $configuredEnvironment[strtoupper($key)] ?? '');
                 } elseif ($eggDefault !== '') {
                     $value = (string) ($v['default_value'] ?? '');
                 } else {
@@ -147,6 +151,21 @@ class ServerController extends Controller
                 $environment[$key] = $value;
             }
 
+            $nestName = (string) data_get($nest, 'attributes.name', 'Software');
+            $eggName = (string) ($eggAttributes['name'] ?? 'Egg');
+            $isMinecraftEgg = str_contains(strtolower($nestName . ' ' . $eggName), 'minecraft');
+
+            // Some exported Paper/Minecraft Eggs incorrectly omit the default for
+            // these common required variables. Pterodactyl requires values at create.
+            if ($isMinecraftEgg) {
+                foreach ($knownEnvironmentDefaults as $environmentKey => $fallbackValue) {
+                    $configuredValue = trim((string) ($configuredEnvironment[$environmentKey] ?? $configuredEnvironment[strtolower($environmentKey)] ?? ''));
+                    if (!isset($environment[$environmentKey]) || trim((string) $environment[$environmentKey]) === '') {
+                        $environment[$environmentKey] = $configuredValue !== '' ? $configuredValue : $fallbackValue;
+                    }
+                }
+            }
+
             $dockerImages = $eggAttributes['docker_images'] ?? [];
             // Pterodactyl returns image-label => Docker-image. Send the image URI value,
             // not its human-readable label, or create-server commonly returns HTTP 422.
@@ -163,9 +182,6 @@ class ServerController extends Controller
                 }
             }
             $startup = (string) ($eggAttributes['startup'] ?? Settings::get('ptero_startup', 'java -jar {{SERVER_JARFILE}}'));
-            $nestName = (string) data_get($nest, 'attributes.name', 'Software');
-            $eggName = (string) ($eggAttributes['name'] ?? 'Egg');
-
             $server = DB::transaction(function () use ($data, $user, $pterodactyl, $eggId, $allocationIds, $environment, $dockerImage, $startup, $nestName, $eggName) {
                 $lockedUser = $user->newQuery()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 if (!$lockedUser->ptero_user_id) {
