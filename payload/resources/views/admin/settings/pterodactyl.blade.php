@@ -127,8 +127,8 @@
    if(!v.env_variable)return;
    const key=String(v.env_variable);
    const eggValue=String(v.default_value??'');
-   const configuredValue=String(previousEnvironment[key]??'');
-   const safeValue=String(safeDefaults[key]??'');
+   const configuredValue=String(previousEnvironment[key]??previousEnvironment[key.toUpperCase()]??'');
+   const safeValue=String(safeDefaults[key.toUpperCase()]??'');
    env[key]=eggValue.trim()!==''?v.default_value:(configuredValue.trim()!==''?configuredValue:safeValue);
   });
   $('ptero_environment').value=JSON.stringify(env,null,2);
