@@ -95,7 +95,8 @@ class LinkvertiseController extends Controller
             $response = Http::connectTimeout(3)->timeout(6)->post($verifyUrl);
             // Linkvertise documents plain-text TRUE/FALSE responses. Normalize whitespace
             // and optional quotes so formatting does not turn a valid response into failure.
-            $verificationBody = strtoupper(trim(trim($response->body()), " \t\n\r\0\x0B\"'"));
+            // Normalize plain-text statuses and the STATUS payload returned by the provider.
+            $verificationBody = $this->normalizeLinkvertiseStatus($response->body());
 
             if (!$response->successful()) {
                 logger()->warning('Linkvertise verification endpoint returned an HTTP error.', [
@@ -165,6 +166,35 @@ class LinkvertiseController extends Controller
             ]);
             return redirect()->route('credits')->with('error', $e instanceof \RuntimeException ? $e->getMessage() : 'Could not verify the Linkvertise task. Please try again later.');
         }
+    }
+
+    /**
+     * Normalize the plain-text statuses and STATUS payloads returned by Linkvertise.
+     * Some responses use an object-like {"STATUS":FALSE} body rather than plain FALSE.
+     */
+    private function normalizeLinkvertiseStatus(string $body): string
+    {
+        if (preg_match('/["\']?STATUS["\']?\s*:\s*["\']?(TRUE|FALSE|WRONG_TOKEN|WRONG_HASH)["\']?/i', $body, $matches)) {
+            return strtoupper($matches[1]);
+        }
+
+        $decoded = json_decode($body, true);
+        if (is_array($decoded)) {
+            foreach (['STATUS', 'status'] as $key) {
+                if (!array_key_exists($key, $decoded)) {
+                    continue;
+                }
+                $value = $decoded[$key];
+                if (is_bool($value)) {
+                    return $value ? 'TRUE' : 'FALSE';
+                }
+                if (is_scalar($value)) {
+                    return strtoupper(trim((string) $value));
+                }
+            }
+        }
+
+        return strtoupper(trim(trim($body), " \t\n\r\0\x0B\"'"));
     }
 
     private function assertEnabled(): void
