@@ -39,6 +39,10 @@ After installation, open your configured dashboard domain and sign in with your 
 
 **Security note:** This command downloads and executes the installer from GitHub. Review `install.sh` before running it on a production VPS.
 
+## 🎬 Cinematic login intro
+
+The login and registration screens show a short video intro before revealing the account form. It plays once per browser-tab session, with a skip control and a sound button for browsers that block audible autoplay. The logo-free blue wallpaper is blurred behind the authentication card. The media assets live in `payload/public/tr-login-intro.mp4` and `payload/public/tr-auth-wallpaper.webp`.
+
 ## ⚙️ Configuration
 
 After installation, sign in as an administrator and configure your integrations from the dashboard.
