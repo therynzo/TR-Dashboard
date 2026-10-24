@@ -39,7 +39,6 @@ class ServerController extends Controller
             'node_id' => ['required', 'integer', 'min:1'],
             'nest_id' => ['required', 'integer', 'min:1'],
             'egg_id' => ['required', 'integer', 'min:1'],
-            'allocation_id' => ['required', 'integer', 'min:1'],
             'environment' => ['nullable', 'array'],
             'environment.*' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -51,7 +50,6 @@ class ServerController extends Controller
             $nodeId = (int) $data['node_id'];
             $nestId = (int) $data['nest_id'];
             $eggId = (int) $data['egg_id'];
-            $allocationId = (int) $data['allocation_id'];
 
             $locations = $pterodactyl->locations();
             $locationExists = collect($locations)->contains(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $locationId);
@@ -68,10 +66,27 @@ class ServerController extends Controller
                 throw new RuntimeException('The selected node is in maintenance mode. Choose another node.');
             }
 
-            $allocation = collect($pterodactyl->allocations($nodeId))->first(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $allocationId);
-            if (!$allocation || (bool) data_get($allocation, 'attributes.assigned', false)) {
-                throw new RuntimeException('The selected allocation is no longer free. Reload allocations and select another port.');
+            // Automatically select a free allocation on the selected node. The browser does
+            // not submit an allocation ID; fresh panel data is checked here at deploy time.
+            $freeAllocations = collect($pterodactyl->allocations($nodeId))
+                ->filter(fn ($item) => !(bool) data_get($item, 'attributes.assigned', false))
+                ->sortBy(fn ($item) => (int) data_get($item, 'attributes.id', PHP_INT_MAX))
+                ->values();
+
+            if ($freeAllocations->isEmpty()) {
+                throw new RuntimeException('No free allocation is available on this node. Choose another node or ask the administrator to add free allocations in Pterodactyl.');
             }
+
+            $allocationIds = $freeAllocations
+                ->map(fn ($item) => (int) data_get($item, 'attributes.id', 0))
+                ->filter(fn ($id) => $id > 0)
+                ->values()
+                ->all();
+
+            if (!$allocationIds) {
+                throw new RuntimeException('Pterodactyl returned free allocations without valid IDs. Check the node allocation configuration.');
+            }
+            $allocationId = $allocationIds[0];
 
             $eggRecord = $pterodactyl->egg($nestId, $eggId);
             $eggAttributes = $eggRecord['attributes'] ?? [];
@@ -107,12 +122,25 @@ class ServerController extends Controller
             }
 
             $dockerImages = $eggAttributes['docker_images'] ?? [];
-            $dockerImage = is_array($dockerImages) && count($dockerImages) ? (string) array_key_first($dockerImages) : (string) ($eggAttributes['docker_image'] ?? Settings::get('ptero_docker_image', 'ghcr.io/pterodactyl/yolks:java_21'));
+            // Pterodactyl returns image-label => Docker-image. Send the image URI value,
+            // not its human-readable label, or create-server commonly returns HTTP 422.
+            $dockerImage = is_array($dockerImages) && count($dockerImages)
+                ? (string) array_values($dockerImages)[0]
+                : (string) ($eggAttributes['docker_image'] ?? Settings::get('ptero_docker_image', 'ghcr.io/pterodactyl/yolks:java_21'));
+
+            if ($dockerImage === '' || !str_contains($dockerImage, '/')) {
+                $configuredImage = trim((string) Settings::get('ptero_docker_image', ''));
+                if ($configuredImage !== '' && str_contains($configuredImage, '/')) {
+                    $dockerImage = $configuredImage;
+                } else {
+                    throw new RuntimeException('The selected Egg has no valid Docker image. Ask the administrator to reload the Egg defaults or configure a valid Docker image.');
+                }
+            }
             $startup = (string) ($eggAttributes['startup'] ?? Settings::get('ptero_startup', 'java -jar {{SERVER_JARFILE}}'));
             $nestName = (string) data_get($nest, 'attributes.name', 'Software');
             $eggName = (string) ($eggAttributes['name'] ?? 'Egg');
 
-            $server = DB::transaction(function () use ($data, $user, $pterodactyl, $eggId, $allocationId, $environment, $dockerImage, $startup, $nestName, $eggName) {
+            $server = DB::transaction(function () use ($data, $user, $pterodactyl, $eggId, $allocationIds, $environment, $dockerImage, $startup, $nestName, $eggName) {
                 $lockedUser = $user->newQuery()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 if (!$lockedUser->ptero_user_id) {
                     throw new RuntimeException('Your dashboard account has not been linked to a Pterodactyl user.');
@@ -153,7 +181,33 @@ class ServerController extends Controller
                     'allocation' => ['default' => $allocationId],
                 ];
 
-                $remote = $pterodactyl->createServer($payload);
+                $remote = null;
+                $lastAllocationError = null;
+                foreach ($allocationIds as $candidateAllocationId) {
+                    $payload['allocation'] = ['default' => $candidateAllocationId];
+                    try {
+                        $remote = $pterodactyl->createServer($payload);
+                        break;
+                    } catch (\\Illuminate\\Http\\Client\\RequestException $allocationException) {
+                        $statusCode = $allocationException->response?->status();
+                        $errorText = strtolower((string) $allocationException->response?->body());
+                        $isAllocationConflict = $statusCode === 422
+                            && (str_contains($errorText, 'allocation')
+                                || str_contains($errorText, 'port')
+                                || str_contains($errorText, 'default'));
+                        if (!$isAllocationConflict) {
+                            throw $allocationException;
+                        }
+                        $lastAllocationError = $allocationException;
+                    }
+                }
+
+                if (!$remote) {
+                    if ($lastAllocationError) {
+                        throw $lastAllocationError;
+                    }
+                    throw new RuntimeException('Could not create the server because no free allocation could be assigned.');
+                }
                 $lockedUser->credits = round((float) $lockedUser->credits - $cost, 2);
                 $lockedUser->save();
                 if ($cost > 0) {
@@ -185,12 +239,28 @@ class ServerController extends Controller
             if ($e instanceof \Illuminate\Http\Client\RequestException && $e->response) {
                 $status = $e->response->status();
                 $message = match ($status) {
-                    401 => 'Pterodactyl rejected the Application API key (HTTP 401). Re-save the key in Admin → Pterodactyl API.',
-                    403 => 'Pterodactyl refused this action (HTTP 403). The Application API key needs permissions to create servers and read nodes, eggs, and allocations.',
-                    404 => 'Pterodactyl returned HTTP 404. Check the panel root URL and selected software category, Egg, node, and allocation.',
-                    422 => 'Pterodactyl rejected the server configuration (HTTP 422). Check the selected Egg environment, image, resource limits and allocation.',
+                    401 => 'Pterodactyl rejected the Application API key (HTTP 401). Re-save the Application API key in Admin → Pterodactyl API.',
+                    403 => 'Pterodactyl refused this action (HTTP 403). Check Application API permissions for server creation and reading users, nodes, Eggs, and allocations.',
+                    404 => 'Pterodactyl returned HTTP 404. Check the panel root URL and selected software category and Egg.',
+                    422 => 'Pterodactyl rejected the server configuration (HTTP 422).',
                     default => 'Pterodactyl API request failed with HTTP ' . $status . '. See storage/logs/laravel.log for details.',
                 };
+
+                if ($status === 422) {
+                    $apiErrors = $e->response->json('errors', []);
+                    $details = collect(is_array($apiErrors) ? $apiErrors : [])
+                        ->map(fn ($error) => trim((string) (data_get($error, 'detail') ?: data_get($error, 'message') ?: data_get($error, 'title'))))
+                        ->filter()
+                        ->unique()
+                        ->take(3)
+                        ->implode(' ');
+                    if ($details !== '') {
+                        $message .= ' Pterodactyl says: ' . mb_substr($details, 0, 700);
+                    } else {
+                        $message .= ' No validation detail was returned. Check storage/logs/laravel.log for the API response.';
+                    }
+                }
+
                 return back()->withInput()->with('error', $message);
             }
             return back()->withInput()->with('error', $e instanceof RuntimeException ? $e->getMessage() : 'Server deployment failed. Review the latest Laravel logs for details.');
