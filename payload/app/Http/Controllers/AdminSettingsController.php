@@ -9,6 +9,7 @@ use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
 use Throwable;
 
@@ -221,6 +222,56 @@ class AdminSettingsController extends Controller
         Settings::set('linkvertise_enabled', $enabled ? '1' : '0');
         ActivityLogger::record($request->user()->id, $request->user()->username, 'linkvertise_settings_updated', 'Updated optional Linkvertise reward settings.', $request);
         return back()->with('success', 'Linkvertise settings saved. Reward claims are verified server-side before credits are added.');
+    }
+
+    /**
+     * Check Linkvertise anti-bypass token validity without awarding credits.
+     * A fresh random hash intentionally produces FALSE when the token is valid.
+     */
+    public function testLinkvertise(Request $request): RedirectResponse
+    {
+        $submittedToken = trim((string) $request->input('linkvertise_anti_bypass_token', ''));
+        $token = $submittedToken !== ''
+            ? $submittedToken
+            : trim((string) Settings::get('linkvertise_anti_bypass_token', ''));
+
+        if ($token === '') {
+            return back()->with('error', 'No anti-bypass token was provided or saved. Enter the token from Linkvertise Settings → Anti-Bypassing first.');
+        }
+        if (!preg_match('/^[a-fA-F0-9]{64}$/', $token)) {
+            return back()->with('error', 'The anti-bypass token must be exactly 64 hexadecimal characters. Copy it again from Linkvertise and retry.');
+        }
+
+        try {
+            // The random hash is deliberately not associated with a user task. It must never pay credits.
+            $randomHash = bin2hex(random_bytes(32));
+            $verifyUrl = 'https://publisher.linkvertise.com/api/v1/anti_bypassing?' . http_build_query([
+                'token' => $token,
+                'hash' => $randomHash,
+            ], '', '&', PHP_QUERY_RFC3986);
+            $response = Http::connectTimeout(3)->timeout(8)->post($verifyUrl);
+            $body = strtoupper(trim(trim($response->body()), " \\t\\n\\r\\0\\x0B\\\"'"));
+
+            if (!$response->successful()) {
+                return back()->with('error', 'Linkvertise API returned HTTP ' . $response->status() . '. The token could not be confirmed. This can be a provider/network issue; retry shortly. No credits were awarded.');
+            }
+
+            if ($body === 'FALSE') {
+                return back()->with('success', 'Linkvertise API is reachable and the anti-bypass token is accepted. FALSE is expected because this test uses a random hash. No credits were awarded.');
+            }
+
+            if (str_contains($body, 'WRONG_TOKEN') || str_contains($body, 'INVALID AUTHENTICATION TOKEN') || str_contains($body, 'TOKEN NOT VALID')) {
+                return back()->with('error', 'Linkvertise rejected the anti-bypass token. Copy the current token from Linkvertise Settings → Anti-Bypassing, save it there, then replace it here and test again.');
+            }
+
+            return back()->with('error', 'Linkvertise responded with an unexpected verification result (' . mb_substr($body ?: 'empty response', 0, 50) . '). The token could not be confirmed; no credits were awarded.');
+        } catch (Throwable $e) {
+            // Do not log exception text because the request URL contains the secret token.
+            logger()->warning('Linkvertise token test could not reach the verification service.', [
+                'exception_class' => get_class($e),
+            ]);
+            return back()->with('error', 'Could not reach Linkvertise verification API (connection, DNS, TLS, timeout, or provider issue). This test awarded no credits. Retry shortly.');
+        }
     }
 
     private function values(): array
