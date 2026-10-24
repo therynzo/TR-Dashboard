@@ -8,6 +8,8 @@ use App\Services\PterodactylClient;
 use App\Support\ActivityLogger;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Client\RequestException;
+use RuntimeException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -68,9 +70,42 @@ class AuthController extends Controller
             }
             try {
                 $pteroUserId = $pterodactyl->createUser($data['username'], $data['email'], $data['password']);
+            } catch (RequestException $e) {
+                report($e);
+                $status = $e->response?->status() ?? 0;
+                $apiErrors = $e->response?->json('errors', []);
+                $details = collect(is_array($apiErrors) ? $apiErrors : [])
+                    ->map(fn ($error) => trim((string) (data_get($error, 'detail') ?: data_get($error, 'message') ?: data_get($error, 'title'))))
+                    ->filter()
+                    ->unique()
+                    ->take(3)
+                    ->implode(' ');
+                $lowerDetails = strtolower($details);
+
+                if ($status === 401) {
+                    $message = 'Pterodactyl rejected the Application API key (HTTP 401). Ask the administrator to save a valid key.';
+                } elseif ($status === 403) {
+                    $message = 'The Pterodactyl API key cannot create users (HTTP 403). Ask the administrator to grant Users → Create permission to the Application API key.';
+                } elseif ($status === 422 && (str_contains($lowerDetails, 'already been taken') || str_contains($lowerDetails, 'already exists') || str_contains($lowerDetails, 'has already been registered'))) {
+                    $message = 'That username or email is already registered in Pterodactyl. Use a different username/email or ask the administrator to reconcile the existing Pterodactyl account.';
+                } elseif ($status === 422) {
+                    $message = 'Pterodactyl rejected the account details (HTTP 422).' . ($details !== '' ? ' ' . mb_substr($details, 0, 500) : ' Check the username, email, and required user fields.');
+                } elseif ($status === 429) {
+                    $message = 'Pterodactyl is rate-limiting account creation. Wait a few minutes and try again.';
+                } elseif ($status >= 500) {
+                    $message = 'The Pterodactyl panel returned a server error (HTTP ' . $status . '). Please try again later.';
+                } else {
+                    $message = 'Pterodactyl account creation failed' . ($status ? ' (HTTP ' . $status . ')' : '') . '.'
+                        . ($details !== '' ? ' ' . mb_substr($details, 0, 500) : ' Ask the administrator to check the panel URL and Application API key.');
+                }
+
+                return back()->withErrors(['email' => $message])->withInput($request->except('password', 'password_confirmation'));
             } catch (Throwable $e) {
                 report($e);
-                return back()->withErrors(['email' => 'Could not create your linked Pterodactyl account. The administrator should check the Application API key and username/email availability.'])->withInput($request->except('password', 'password_confirmation'));
+                $message = $e instanceof RuntimeException
+                    ? $e->getMessage()
+                    : 'Could not contact Pterodactyl to create your account. Please try again later or ask the administrator to check the API connection.';
+                return back()->withErrors(['email' => $message])->withInput($request->except('password', 'password_confirmation'));
             }
         }
 
