@@ -2,7 +2,7 @@
 @section('title','Pterodactyl API')
 @section('crumb','Admin / Pterodactyl API')
 @section('content')
-<div class="page-heading"><div><div class="eyebrow">INTEGRATION</div><h1>Pterodactyl Application API</h1><p>Connect first, test the API, then load and save your panel's locations, nodes, software and allocations.</p></div></div>
+<div class="page-heading"><div><div class="eyebrow">INTEGRATION</div><h1>Pterodactyl Application API</h1><p>Connect once, choose the default location and node, then select the default software Egg. Docker image, startup command, and Egg variables are loaded from Pterodactyl automatically.</p></div></div>
 
 <section class="settings-card">
   <h3>1. Panel connection</h3>
@@ -32,11 +32,7 @@
       <div class="field"><label for="ptero_nest_id">Software category / Nest</label><select class="input" id="ptero_nest_id" name="ptero_nest_id" required><option value="">Load software categories first</option></select></div>
       <div class="field"><label for="ptero_egg_id">Software / Egg</label><select class="input" id="ptero_egg_id" name="ptero_egg_id" required><option value="">Select a software category first</option></select></div>
     </div>
-    <div class="field-row">
-      <div class="field"><label for="ptero_docker_image">Docker image (from Egg)</label><input class="input" id="ptero_docker_image" name="ptero_docker_image" value="{{ old('ptero_docker_image',$settings['ptero_docker_image']) }}" required></div>
-      <div class="field"><label for="ptero_startup">Startup command (from Egg)</label><input class="input" id="ptero_startup" name="ptero_startup" value="{{ old('ptero_startup',$settings['ptero_startup']) }}" required></div>
-    </div>
-    <div class="field"><label for="ptero_environment">Default Egg environment (JSON object)</label><textarea class="textarea mono" id="ptero_environment" name="ptero_environment" rows="5" required>{{ old('ptero_environment',$settings['ptero_environment']) }}</textarea><div class="field-help">Auto-filled with the selected Egg's environment variable defaults. Edit only when you know the Egg's required values.</div></div>
+    <div id="pteroEggInfo" class="field-help" role="status" aria-live="polite">The selected Egg supplies its Docker image, startup command and required environment variables automatically.</div>
     <div class="field-row three">
       <div class="field"><label for="ptero_memory">Memory (MB)</label><input class="input" id="ptero_memory" name="ptero_memory" type="number" min="128" value="{{ old('ptero_memory',$settings['ptero_memory']) }}" required></div>
       <div class="field"><label for="ptero_disk">Disk (MB)</label><input class="input" id="ptero_disk" name="ptero_disk" type="number" min="256" value="{{ old('ptero_disk',$settings['ptero_disk']) }}" required></div>
@@ -109,29 +105,16 @@
   currentEggs=await fetchData('eggs',{nest_id:nestId});
   fill(selects.egg,currentEggs,selected,x=>x.name,()=>false,'Choose software / Egg');
   if (!selects.egg.value && currentEggs.length===1) selects.egg.value=String(currentEggs[0].id);
-  applyEgg();
+  updateEggInfo();
  }
- function applyEgg() {
+ function updateEggInfo() {
   const egg=currentEggs.find(x=>String(x.id)===String(selects.egg.value));
-  if (!egg) return;
-  const images=egg.docker_images||{};
-  const image=Object.values(images)[0]||'';
-  if (image) $('ptero_docker_image').value=image;
-  if (egg.startup) $('ptero_startup').value=egg.startup;
-
-  let previousEnvironment={};
-  try { previousEnvironment=JSON.parse($('ptero_environment').value||'{}')||{}; } catch (_) {}
-  const safeDefaults={SERVER_JARFILE:'server.jar',BUILD_NUMBER:'latest',MINECRAFT_VERSION:'latest',SERVER_VERSION:'latest'};
-  const env={};
-  (egg.variables||[]).forEach(v=>{
-   if(!v.env_variable)return;
-   const key=String(v.env_variable);
-   const eggValue=String(v.default_value??'');
-   const configuredValue=String(previousEnvironment[key]??previousEnvironment[key.toUpperCase()]??'');
-   const safeValue=String(safeDefaults[key.toUpperCase()]??'');
-   env[key]=eggValue.trim()!==''?v.default_value:(configuredValue.trim()!==''?configuredValue:safeValue);
-  });
-  $('ptero_environment').value=JSON.stringify(env,null,2);
+  const info=$('pteroEggInfo');
+  if(!info)return;
+  if(!egg){info.textContent='Choose a software Egg. Docker image, startup command and environment variables are provided by Pterodactyl.';return;}
+  const variables=egg.variables||[];
+  const required=variables.filter(v=>String(v.rules||'').split('|').some(rule=>rule.trim()==='required')).length;
+  info.textContent='Loaded "'+egg.name+'". Docker image and startup command will come directly from this Egg; '+variables.length+' environment variables detected ('+required+' required). Required values are populated automatically at deployment.';
  }
  async function loadPanelData() {
   $('pteroLoadData').disabled=true;
@@ -141,14 +124,14 @@
    fill(selects.location,locations,saved.location,x=>x.name,()=>false,'Choose a location');
    fill(selects.nest,nests,saved.nest,x=>x.name,()=>false,'Choose software category');
    await Promise.all([loadNodes(saved.node),loadEggs(saved.egg)]);
-   applyEgg();
+   updateEggInfo();
    setStatus('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+currentEggs.length+' Eggs. Free allocations are selected automatically when a server is deployed. Review selections, then save deployment defaults.');
   } catch(e) { setStatus(e.message||'Pterodactyl discovery failed.',true); }
   finally { $('pteroLoadData').disabled=false; }
  }
  selects.location.addEventListener('change',()=>{saved.node='';loadNodes('');});
  selects.nest.addEventListener('change',()=>{saved.egg='';loadEggs('');});
- selects.egg.addEventListener('change',applyEgg);
+ selects.egg.addEventListener('change',updateEggInfo);
  $('pteroLoadData').addEventListener('click',loadPanelData);
  @if($settings['ptero_api_key_configured'])
  loadPanelData();
