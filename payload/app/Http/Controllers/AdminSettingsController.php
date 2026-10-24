@@ -81,7 +81,6 @@ class AdminSettingsController extends Controller
             'ptero_node_id' => ['required', 'integer', 'min:1'],
             'ptero_nest_id' => ['required', 'integer', 'min:1'],
             'ptero_egg_id' => ['required', 'integer', 'min:1'],
-            'ptero_allocation_id' => ['required', 'integer', 'min:1'],
             'ptero_docker_image' => ['required', 'string', 'max:255'],
             'ptero_startup' => ['required', 'string', 'max:2000'],
             'ptero_environment' => ['required', 'string', 'max:10000'],
@@ -105,7 +104,7 @@ class AdminSettingsController extends Controller
             Settings::set($key, $value);
         }
 
-        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_defaults_saved', 'Saved default Pterodactyl location, node, software, Egg, allocation, and server limits.', $request);
+        ActivityLogger::record($request->user()->id, $request->user()->username, 'pterodactyl_defaults_saved', 'Saved default Pterodactyl location, node, software, Egg, and server limits.', $request);
         return redirect()->route('admin.settings.pterodactyl')->with('success', 'Connection defaults saved. The server creation page will now use live panel options.');
     }
 
