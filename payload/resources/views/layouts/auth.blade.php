@@ -7,7 +7,7 @@
     (() => {
         try {
             const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            if (reduced || sessionStorage.getItem('tr-auth-intro-v1') === 'done') {
+            if (reduced || sessionStorage.getItem('tr-auth-intro-v2') === 'done') {
                 document.documentElement.classList.add('tr-auth-revealed');
             } else {
                 document.documentElement.classList.add('tr-intro-pending');
@@ -85,7 +85,7 @@
         return;
     }
 
-    const markSeen = () => { try { sessionStorage.setItem('tr-auth-intro-v1', 'done'); } catch (_) {} };
+    const markSeen = () => { try { sessionStorage.setItem('tr-auth-intro-v2', 'done'); } catch (_) {} };
     let finished = false;
     let fallbackTimer = null;
     let objectUrl = null;
