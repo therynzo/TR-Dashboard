@@ -11,3 +11,29 @@
 .sidebar{overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.13) transparent}
 .sidebar-bottom{padding-bottom:20px;flex-shrink:0}
 .oauth-buttons .btn{display:flex;justify-content:space-between;align-items:center}
+
+/* Cinematic login/register intro */
+html.tr-intro-pending body.auth-body{overflow:hidden}
+html.tr-intro-pending .auth-card{opacity:0;transform:translateY(18px) scale(.985);filter:blur(10px);pointer-events:none}
+html.tr-auth-revealed .auth-card{opacity:1;transform:translateY(0) scale(1);filter:none;pointer-events:auto;transition:opacity .75s ease,transform .75s cubic-bezier(.2,.8,.2,1),filter .75s ease}
+.auth-body{position:relative;isolation:isolate;background:#03192e url('/tr-auth-wallpaper.webp') center/cover fixed no-repeat}
+.auth-body:before{content:"";position:fixed;inset:-12px;z-index:-1;background:inherit;filter:blur(4px) brightness(.62);transform:scale(1.04)}
+.auth-card{position:relative;z-index:1;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:opacity .75s ease,transform .75s ease,filter .75s ease}
+.auth-art{background:linear-gradient(145deg,rgba(3,20,39,.78),rgba(2,11,24,.65))}
+.auth-form-wrap{background:rgba(15,20,33,.7)}
+.tr-auth-intro{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:#03192e;opacity:1;visibility:visible;transition:opacity .7s ease,visibility .7s ease}
+.tr-auth-intro[hidden]{display:none}
+.tr-auth-intro-video{position:absolute;width:100%;height:100%;inset:0;object-fit:cover;background:#03192e}
+.tr-auth-intro-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(2,9,20,.28),rgba(2,9,20,.05) 45%,rgba(1,8,20,.62))}
+.tr-auth-intro-brand{position:absolute;left:clamp(22px,5vw,64px);top:clamp(22px,5vh,48px);display:flex;align-items:center;gap:12px;color:white;font-weight:800;font-size:15px;text-shadow:0 2px 16px #00112a}
+.tr-auth-intro-brand img{object-fit:contain;border-radius:9px;box-shadow:0 4px 24px rgba(0,0,0,.22)}
+.tr-auth-intro-brand small{display:block;margin-left:5px;color:rgba(255,255,255,.72);font-size:10px;font-weight:500}
+.tr-auth-intro-actions{position:absolute;right:clamp(22px,5vw,64px);top:clamp(22px,5vh,48px);display:flex;gap:9px}
+.tr-auth-intro-button{border:1px solid rgba(255,255,255,.35);border-radius:999px;background:rgba(2,12,30,.45);backdrop-filter:blur(12px);color:white;padding:10px 15px;font-size:12px;font-weight:650;cursor:pointer;transition:background .2s ease,transform .2s ease}
+.tr-auth-intro-button:hover{background:rgba(44,115,210,.55);transform:translateY(-1px)}
+.tr-auth-intro-caption{position:absolute;left:clamp(22px,5vw,64px);bottom:clamp(22px,5vh,48px);display:flex;align-items:center;gap:10px;color:rgba(255,255,255,.86);font-size:12px;letter-spacing:.02em;text-shadow:0 2px 12px #00112a}
+.tr-auth-loading-dot{width:7px;height:7px;border-radius:50%;background:#45b5ff;box-shadow:0 0 18px #2196ff;animation:trPulse 1.2s infinite}
+.tr-auth-intro-ending{opacity:0;visibility:hidden;pointer-events:none}
+@keyframes trPulse{0%,100%{opacity:.5;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+@media(max-width:850px){.auth-body{background-attachment:scroll}.tr-auth-intro-brand small{display:none}.tr-auth-intro-brand{align-items:center}}
+@media(prefers-reduced-motion:reduce){.tr-auth-intro{display:none!important}html.tr-intro-pending .auth-card{opacity:1;transform:none;filter:none;pointer-events:auto}}
