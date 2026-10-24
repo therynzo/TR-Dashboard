@@ -62,7 +62,7 @@ class LinkvertiseController extends Controller
                 'hash_present' => $hash !== '',
                 'hash_length' => strlen($hash),
             ]);
-            return redirect()->route('credits')->with('error', 'Linkvertise returned without a valid 64-character completion hash. In Linkvertise, make sure your published item is a Target Link (not a Paste Link) and its target URL is exactly the Verified completion target URL shown in Admin → Linkvertise Rewards. Then complete the task again.');
+            return redirect()->route('credits')->with('error', 'Linkvertise returned without a valid completion hash, so the reward was not verified and no credits were added. This is usually a Linkvertise link setup issue, not your phone connection: in Admin → Linkvertise Rewards, put your Linkvertise short URL in the reward-link field; inside Linkvertise, set that link’s Target URL to the exact Verified completion target URL shown here and enable Anti-Bypassing for a Target Link (not a Paste Link). Save Linkvertise settings, then start a fresh task from Credits.');
         }
 
         $user = $request->user();
