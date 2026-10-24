@@ -48,6 +48,7 @@ Route::middleware('auth')->group(function () {
     })->name('credits');
     Route::post('/redeem', [RedeemController::class, 'redeem'])->name('redeem');
     Route::get('/linkvertise/go', [LinkvertiseController::class, 'start'])->name('linkvertise.start');
+    Route::get('/linkvertise/status', [LinkvertiseController::class, 'status'])->name('linkvertise.status');
     Route::get('/linkvertise/complete', [LinkvertiseController::class, 'complete'])->name('linkvertise.complete');
 
     Route::get('/tickets', [TicketController::class, 'index'])->name('tickets.index');
