@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\LinkvertiseController;
 use App\Http\Controllers\OAuthController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PterodactylDiscoveryController;
 use App\Http\Controllers\RedeemController;
 use App\Http\Controllers\ServerController;
 use App\Http\Controllers\TicketController;
