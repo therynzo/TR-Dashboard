@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script>
     (() => {
@@ -20,8 +20,18 @@
     <title>@yield('title', 'Account') · {{ $siteSettings['brand_name'] ?? 'TR Dashboard' }}</title>
     <link rel="icon" type="image/png" href="{{ !empty($siteSettings['logo_url']) ? $siteSettings['logo_url'] : asset('tr-logo.png') }}">
     <link rel="apple-touch-icon" href="{{ !empty($siteSettings['logo_url']) ? $siteSettings['logo_url'] : asset('tr-logo.png') }}">
-    <link rel="stylesheet" href="{{ asset('tr-dashboard.css') }}">
+    <link rel="stylesheet" href="{{ asset('tr-dashboard.css') }}?v=auth-intro-20261024-2">
     <style>:root{--accent:{{ $siteSettings['theme_color'] ?? '#7c3aed' }};}</style>
+<style>
+    html,body.auth-body{min-height:100%;width:100%;margin:0}
+    #trAuthIntro.tr-auth-intro{position:fixed!important;inset:0!important;left:0!important;top:0!important;width:100vw!important;height:100vh!important;height:100dvh!important;max-width:none!important;max-height:none!important;overflow:hidden!important;display:block!important;z-index:2147483647!important;background:#03192e!important;isolation:isolate}
+    #trAuthIntro.tr-auth-intro[hidden]{display:none!important}
+    #trAuthIntro #trAuthIntroVideo.tr-auth-intro-video{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;min-width:100%!important;min-height:100%!important;max-width:none!important;max-height:none!important;display:block!important;object-fit:cover!important;object-position:center center!important;border:0!important;margin:0!important;padding:0!important;background:#03192e!important;z-index:0!important}
+    #trAuthIntro .tr-auth-intro-shade{position:absolute!important;inset:0!important;z-index:1!important;pointer-events:none}
+    #trAuthIntro .tr-auth-intro-brand,#trAuthIntro .tr-auth-intro-actions,#trAuthIntro .tr-auth-intro-caption{z-index:2!important}
+    .auth-card{position:relative;z-index:1}
+    @media(max-width:640px){#trAuthIntro .tr-auth-intro-brand{left:18px;top:18px}#trAuthIntro .tr-auth-intro-actions{right:18px;top:18px}#trAuthIntro .tr-auth-intro-caption{left:18px;bottom:22px}}
+  </style>
 </head>
 <body class="auth-body">
 <div class="tr-auth-intro" id="trAuthIntro" aria-label="TR Dashboard intro" aria-hidden="false">
