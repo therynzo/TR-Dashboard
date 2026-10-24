@@ -55,14 +55,32 @@ class LinkvertiseController extends Controller
     public function complete(Request $request): RedirectResponse
     {
         $this->assertEnabled();
-        $hash = trim((string) $request->query('hash', ''));
+        $query = $request->query();
+        $hash = trim((string) ($query['hash'] ?? ''));
+        if ($hash === '') {
+            // Be tolerant of a provider/proxy that changes query-key casing, without accepting another parameter.
+            foreach ($query as $key => $value) {
+                if (strtolower((string) $key) === 'hash' && is_scalar($value)) {
+                    $hash = trim((string) $value);
+                    break;
+                }
+            }
+        }
+
         if (!preg_match('/^[a-fA-F0-9]{64}$/', $hash)) {
+            $hashPresent = $hash !== '';
+            $queryKeys = array_slice(array_map('strval', array_keys($query)), 0, 20);
             logger()->notice('Linkvertise return did not include a valid completion hash.', [
                 'user_id' => $request->user()->id,
-                'hash_present' => $hash !== '',
+                'hash_present' => $hashPresent,
                 'hash_length' => strlen($hash),
+                'query_keys' => $queryKeys,
             ]);
-            return redirect()->route('credits')->with('error', 'Linkvertise returned without a valid completion hash, so the reward was not verified and no credits were added. This is usually a Linkvertise link setup issue, not your phone connection: in Admin → Linkvertise Rewards, put your Linkvertise short URL in the reward-link field; inside Linkvertise, set that link’s Target URL to the exact Verified completion target URL shown here and enable Anti-Bypassing for a Target Link (not a Paste Link). Save Linkvertise settings, then start a fresh task from Credits.');
+
+            $message = $hashPresent
+                ? 'Linkvertise returned a hash, but it was not a valid 64-character hexadecimal value. Start a fresh task from Credits and return immediately; Linkvertise hashes expire after about 10 seconds. No credits were added.'
+                : 'Linkvertise sent you back without a ?hash=... parameter, so no credits were added. In Linkvertise, make sure this is a Target Link (not a Paste Link), Anti-Bypassing is enabled and saved, and its Target URL is exactly the Verified completion target URL shown in Admin → Linkvertise Rewards. Do not open the callback URL directly. Start a fresh task from Credits after correcting it.';
+            return redirect()->route('credits')->with('error', $message);
         }
 
         $user = $request->user();
