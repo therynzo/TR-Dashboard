@@ -31,14 +31,89 @@ class ServerController extends Controller
 
     public function store(Request $request, PterodactylClient $pterodactyl): RedirectResponse
     {
-        $data = $request->validate(['name' => ['required', 'string', 'min:3', 'max:40', 'regex:/^[A-Za-z0-9 _.-]+$/']]);
+        $data = $request->validate([
+            'name' => ['required', 'string', 'min:3', 'max:40', 'regex:/^[A-Za-z0-9 _.-]+$/'],
+            'location_id' => ['required', 'integer', 'min:1'],
+            'node_id' => ['required', 'integer', 'min:1'],
+            'nest_id' => ['required', 'integer', 'min:1'],
+            'egg_id' => ['required', 'integer', 'min:1'],
+            'allocation_id' => ['required', 'integer', 'min:1'],
+            'environment' => ['nullable', 'array'],
+            'environment.*' => ['nullable', 'string', 'max:2000'],
+        ]);
         $user = $request->user();
 
         try {
-            $server = DB::transaction(function () use ($data, $user, $pterodactyl) {
+            // Validate every selected value against the live panel; do not trust dropdown IDs from the browser.
+            $locationId = (int) $data['location_id'];
+            $nodeId = (int) $data['node_id'];
+            $nestId = (int) $data['nest_id'];
+            $eggId = (int) $data['egg_id'];
+            $allocationId = (int) $data['allocation_id'];
+
+            $locations = $pterodactyl->locations();
+            $locationExists = collect($locations)->contains(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $locationId);
+            if (!$locationExists) {
+                throw new RuntimeException('The selected location no longer exists in Pterodactyl. Reload the create-server page and choose again.');
+            }
+
+            $nodes = $pterodactyl->nodes($locationId);
+            $node = collect($nodes)->first(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $nodeId);
+            if (!$node) {
+                throw new RuntimeException('The selected node does not belong to that location or is no longer available.');
+            }
+            if ((bool) data_get($node, 'attributes.maintenance_mode', false)) {
+                throw new RuntimeException('The selected node is in maintenance mode. Choose another node.');
+            }
+
+            $allocation = collect($pterodactyl->allocations($nodeId))->first(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $allocationId);
+            if (!$allocation || (bool) data_get($allocation, 'attributes.assigned', false)) {
+                throw new RuntimeException('The selected allocation is no longer free. Reload allocations and select another port.');
+            }
+
+            $eggRecord = $pterodactyl->egg($nestId, $eggId);
+            $eggAttributes = $eggRecord['attributes'] ?? [];
+            $nest = collect($pterodactyl->nests())->first(fn ($item) => (int) data_get($item, 'attributes.id', 0) === $nestId);
+            if (!$nest) {
+                throw new RuntimeException('The selected software category no longer exists. Reload the page and choose again.');
+            }
+
+            $submittedEnvironment = $data['environment'] ?? [];
+            $environment = [];
+            $variables = data_get($eggRecord, 'relationships.variables.data', []);
+            foreach ($variables as $variable) {
+                $v = $variable['attributes'] ?? [];
+                $key = (string) ($v['env_variable'] ?? '');
+                if ($key === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key)) {
+                    continue;
+                }
+                $editable = (bool) ($v['user_editable'] ?? false);
+                $value = $editable && array_key_exists($key, $submittedEnvironment)
+                    ? (string) $submittedEnvironment[$key]
+                    : (string) ($v['default_value'] ?? '');
+                $rules = (string) ($v['rules'] ?? 'nullable|string');
+                if (str_contains($rules, 'required') && trim($value) === '') {
+                    throw new RuntimeException('The required Egg variable "' . $key . '" is empty. Choose another Egg or ask the administrator to configure a default value.');
+                }
+                if ($editable) {
+                    $validator = \\Illuminate\\Support\\Facades\\Validator::make([$key => $value], [$key => $rules]);
+                    if ($validator->fails()) {
+                        throw new RuntimeException('Invalid value for Egg variable "' . $key . '": ' . $validator->errors()->first($key));
+                    }
+                }
+                $environment[$key] = $value;
+            }
+
+            $dockerImages = $eggAttributes['docker_images'] ?? [];
+            $dockerImage = is_array($dockerImages) && count($dockerImages) ? (string) array_key_first($dockerImages) : (string) ($eggAttributes['docker_image'] ?? Settings::get('ptero_docker_image', 'ghcr.io/pterodactyl/yolks:java_21'));
+            $startup = (string) ($eggAttributes['startup'] ?? Settings::get('ptero_startup', 'java -jar {{SERVER_JARFILE}}'));
+            $nestName = (string) data_get($nest, 'attributes.name', 'Software');
+            $eggName = (string) ($eggAttributes['name'] ?? 'Egg');
+
+            $server = DB::transaction(function () use ($data, $user, $pterodactyl, $eggId, $allocationId, $environment, $dockerImage, $startup, $nestName, $eggName) {
                 $lockedUser = $user->newQuery()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 if (!$lockedUser->ptero_user_id) {
-                    throw new RuntimeException('Your user account has not been linked to Pterodactyl.');
+                    throw new RuntimeException('Your dashboard account has not been linked to a Pterodactyl user.');
                 }
 
                 $slotUse = ServerInstance::query()->where('user_id', $lockedUser->id)->whereIn('status', ['active', 'suspended'])->count();
@@ -51,25 +126,15 @@ class ServerController extends Controller
                     throw new RuntimeException('Not enough credits to create this server.');
                 }
 
-                $egg = (int) Settings::get('ptero_egg_id', 0);
-                $allocation = (int) Settings::get('ptero_allocation_id', 0);
-                if ($egg < 1 || $allocation < 1) {
-                    throw new RuntimeException('The administrator must configure the default Pterodactyl Egg ID and Allocation ID in Admin → Settings first.');
-                }
-
-                $environment = json_decode((string) Settings::get('ptero_environment', '{}'), true);
-                if (!is_array($environment)) {
-                    throw new RuntimeException('The configured Pterodactyl environment must be valid JSON.');
-                }
                 $memory = max(128, (int) Settings::get('ptero_memory', 2048));
                 $disk = max(256, (int) Settings::get('ptero_disk', 5120));
                 $cpu = max(1, (int) Settings::get('ptero_cpu', 100));
                 $payload = [
                     'name' => $data['name'],
                     'user' => (int) $lockedUser->ptero_user_id,
-                    'egg' => $egg,
-                    'docker_image' => (string) Settings::get('ptero_docker_image', 'ghcr.io/pterodactyl/yolks:java_21'),
-                    'startup' => (string) Settings::get('ptero_startup', 'java -jar {{SERVER_JARFILE}}'),
+                    'egg' => $eggId,
+                    'docker_image' => $dockerImage,
+                    'startup' => $startup,
                     'environment' => $environment,
                     'limits' => [
                         'memory' => $memory,
@@ -83,7 +148,7 @@ class ServerController extends Controller
                         'allocations' => (int) Settings::get('ptero_allocations', 1),
                         'backups' => (int) Settings::get('ptero_backups', 1),
                     ],
-                    'allocation' => ['default' => $allocation],
+                    'allocation' => ['default' => $allocationId],
                 ];
 
                 $remote = $pterodactyl->createServer($payload);
@@ -105,7 +170,7 @@ class ServerController extends Controller
                     'ptero_server_id' => (int) $remote['id'],
                     'ptero_identifier' => $remote['identifier'] ?? null,
                     'status' => 'active',
-                    'software' => 'Configured default egg',
+                    'software' => $nestName . ' / ' . $eggName,
                     'credits_paid' => $cost,
                     'expires_at' => now()->addHours(max(1, (int) Settings::get('server_lifetime_hours', 48))),
                 ]);
@@ -115,7 +180,18 @@ class ServerController extends Controller
             return redirect()->route('servers.show', $server)->with('success', 'Your server has been deployed in Pterodactyl.');
         } catch (Throwable $e) {
             report($e);
-            return back()->withInput()->with('error', $e instanceof RuntimeException ? $e->getMessage() : 'Server deployment failed. Check the Pterodactyl URL, API key, Egg, Allocation, and application logs.');
+            if ($e instanceof \\Illuminate\\Http\\Client\\RequestException && $e->response) {
+                $status = $e->response->status();
+                $message = match ($status) {
+                    401 => 'Pterodactyl rejected the Application API key (HTTP 401). Re-save the key in Admin → Pterodactyl API.',
+                    403 => 'Pterodactyl refused this action (HTTP 403). The Application API key needs permissions to create servers and read nodes, eggs, and allocations.',
+                    404 => 'Pterodactyl returned HTTP 404. Check the panel root URL and selected software category, Egg, node, and allocation.',
+                    422 => 'Pterodactyl rejected the server configuration (HTTP 422). Check the selected Egg environment, image, resource limits and allocation.',
+                    default => 'Pterodactyl API request failed with HTTP ' . $status . '. See storage/logs/laravel.log for details.',
+                };
+                return back()->withInput()->with('error', $message);
+            }
+            return back()->withInput()->with('error', $e instanceof RuntimeException ? $e->getMessage() : 'Server deployment failed. Review the latest Laravel logs for details.');
         }
     }
 
