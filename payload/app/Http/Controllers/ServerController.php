@@ -95,6 +95,20 @@ class ServerController extends Controller
             }
 
             $submittedEnvironment = $data['environment'] ?? [];
+            $configuredEnvironment = json_decode((string) Settings::get('ptero_environment', '{}'), true);
+            if (!is_array($configuredEnvironment)) {
+                $configuredEnvironment = [];
+            }
+
+            // Safe defaults for common Minecraft Java Eggs. Some Egg exports mark these
+            // as required but leave their own default_value empty.
+            $knownEnvironmentDefaults = [
+                'SERVER_JARFILE' => 'server.jar',
+                'BUILD_NUMBER' => 'latest',
+                'MINECRAFT_VERSION' => 'latest',
+                'SERVER_VERSION' => 'latest',
+            ];
+
             $environment = [];
             $variables = data_get($eggRecord, 'relationships.variables.data', []);
             foreach ($variables as $variable) {
@@ -103,16 +117,29 @@ class ServerController extends Controller
                 if ($key === '' || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $key)) {
                     continue;
                 }
+
                 $editable = (bool) ($v['user_editable'] ?? false);
-                $value = $editable && array_key_exists($key, $submittedEnvironment)
-                    ? (string) $submittedEnvironment[$key]
-                    : (string) ($v['default_value'] ?? '');
+                $eggDefault = trim((string) ($v['default_value'] ?? ''));
+                $configuredDefault = trim((string) ($configuredEnvironment[$key] ?? ''));
+                if ($editable && array_key_exists($key, $submittedEnvironment)) {
+                    $value = (string) $submittedEnvironment[$key];
+                } elseif ($configuredDefault !== '') {
+                    // Use administrator-configured environment defaults when the selected
+                    // Egg itself leaves a required value blank.
+                    $value = (string) $configuredEnvironment[$key];
+                } elseif ($eggDefault !== '') {
+                    $value = (string) ($v['default_value'] ?? '');
+                } else {
+                    $value = (string) ($knownEnvironmentDefaults[$key] ?? '');
+                }
+
                 $rules = (string) ($v['rules'] ?? 'nullable|string');
                 if (str_contains($rules, 'required') && trim($value) === '') {
-                    throw new RuntimeException('The required Egg variable "' . $key . '" is empty. Choose another Egg or ask the administrator to configure a default value.');
+                    $label = (string) ($v['name'] ?? $key);
+                    throw new RuntimeException('The required Egg variable "' . $label . '" (' . $key . ') has no value. Set a default in Admin → Pterodactyl API → Egg environment, or choose an Egg with valid defaults.');
                 }
                 if ($editable) {
-                    $validator = \Illuminate\Support\Facades\Validator::make([$key => $value], [$key => $rules]);
+                    $validator = Validator::make([$key => $value], [$key => $rules]);
                     if ($validator->fails()) {
                         throw new RuntimeException('Invalid value for Egg variable "' . $key . '": ' . $validator->errors()->first($key));
                     }
