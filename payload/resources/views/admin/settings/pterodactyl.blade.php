@@ -91,7 +91,7 @@
   const placeholder = document.createElement('option'); placeholder.value=''; placeholder.textContent=empty; select.appendChild(placeholder);
   items.forEach(item => {
    const option=document.createElement('option');
-   option.value=String(item.id); option.textContent=label(item); option.disabled=disabled(item);
+   option.value=String(item.id); option.textContent=label(item); option.disabled=typeof disabled === 'function' ? Boolean(disabled(item)) : Boolean(disabled);
    if (String(item.id)===String(selected)) option.selected=true;
    select.appendChild(option);
   });
@@ -140,8 +140,8 @@
   setStatus('Connecting to Pterodactyl and loading locations, nodes and software…');
   try {
    const [locations,nests]=await Promise.all([fetchData('locations'),fetchData('nests')]);
-   fill(selects.location,locations,saved.location,x=>x.name,false,'Choose a location');
-   fill(selects.nest,nests,saved.nest,x=>x.name,false,'Choose software category');
+   fill(selects.location,locations,saved.location,x=>x.name,()=>false,'Choose a location');
+   fill(selects.nest,nests,saved.nest,x=>x.name,()=>false,'Choose software category');
    await Promise.all([loadNodes(saved.node),loadEggs(saved.egg)]);
    applyEgg();
    setStatus('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+currentEggs.length+' Eggs. Review selections, then save deployment defaults.');
