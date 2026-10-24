@@ -98,6 +98,65 @@ class AdminController extends Controller
         return back()->with('success', 'User profile, credits, and server slots saved.');
     }
 
+    public function deleteUser(Request $request, User $user, PterodactylClient $client): RedirectResponse
+    {
+        $actor = $request->user();
+
+        if ((int) $actor->id === (int) $user->id) {
+            return back()->with('error', 'You cannot delete the account you are currently using.');
+        }
+
+        if ($user->is_admin && User::query()->where('is_admin', true)->count() <= 1) {
+            return back()->with('error', 'The last administrator account cannot be deleted. Promote another administrator first.');
+        }
+
+        $activeServers = ServerInstance::query()
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['active', 'suspended'])
+            ->count();
+
+        if ($activeServers > 0) {
+            return back()->with('error', 'This account still owns ' . $activeServers . ' active or suspended dashboard server(s). Permanently delete those servers first, then delete the account.');
+        }
+
+        // Delete the linked Pterodactyl account first. If Pterodactyl refuses
+        // (for example, because it still owns servers outside TR Dashboard),
+        // keep the local account intact rather than creating an orphan.
+        if ($user->ptero_user_id) {
+            try {
+                $client->deleteUser((int) $user->ptero_user_id);
+            } catch (Throwable $e) {
+                report($e);
+                return back()->with('error', 'Pterodactyl refused to delete the linked account. The dashboard user was not deleted. Check whether the remote account still owns servers and verify Application API permissions.');
+            }
+        }
+
+        $deletedId = (int) $user->id;
+        $deletedUsername = (string) $user->username;
+        $deletedEmail = (string) $user->email;
+        $wasAdmin = (bool) $user->is_admin;
+
+        ActivityLogger::record(
+            $actor->id,
+            $actor->username,
+            'admin_user_deleted',
+            'Deleted dashboard account #' . $deletedId . ' (' . $deletedUsername . ', ' . $deletedEmail . ')' . ($wasAdmin ? ' [administrator]' : '') . '.',
+            $request
+        );
+
+        try {
+            DB::transaction(function () use ($deletedId): void {
+                $target = User::query()->whereKey($deletedId)->lockForUpdate()->firstOrFail();
+                $target->delete();
+            });
+        } catch (Throwable $e) {
+            report($e);
+            return back()->with('error', 'The remote account was handled, but the local account could not be deleted. Check the database logs before retrying.');
+        }
+
+        return redirect()->route('admin.users')->with('success', 'Account ' . $deletedUsername . ' was deleted. Its local tickets, credit history, and old server records were removed according to the database relationships.');
+    }
+
     public function servers(Request $request): View
     {
         $query = ServerInstance::query()->with('user')->latest();
