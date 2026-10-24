@@ -26,7 +26,6 @@
 <body class="auth-body">
 <div class="tr-auth-intro" id="trAuthIntro" aria-label="TR Dashboard intro" aria-hidden="false">
     <video id="trAuthIntroVideo" class="tr-auth-intro-video" autoplay playsinline preload="auto" poster="{{ asset('tr-auth-wallpaper.svg') }}">
-        <source src="{{ asset('tr-login-intro.mp4') }}" type="video/mp4">
     </video>
     <div class="tr-auth-intro-shade" aria-hidden="true"></div>
     <div class="tr-auth-intro-brand">
@@ -70,14 +69,16 @@
     const soundButton = document.getElementById('trAuthSound');
     const skipButton = document.getElementById('trAuthSkip');
     if (!overlay || !video) return;
-    if (!root.classList.contains('tr-intro-pending')) { overlay.hidden = true; overlay.setAttribute('aria-hidden', 'true'); return; }
+    if (!root.classList.contains('tr-intro-pending')) {
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+        return;
+    }
 
-    // Record the intro once per tab session so refreshes won't restart it.
-    const markSeen = () => {
-        try { sessionStorage.setItem('tr-auth-intro-v1', 'done'); } catch (_) {}
-    };
+    const markSeen = () => { try { sessionStorage.setItem('tr-auth-intro-v1', 'done'); } catch (_) {} };
     let finished = false;
     let fallbackTimer = null;
+    let objectUrl = null;
     const finish = () => {
         if (finished) return;
         finished = true;
@@ -91,9 +92,6 @@
         window.setTimeout(() => { overlay.hidden = true; }, 750);
     };
 
-    video.volume = 0.85;
-    video.addEventListener('ended', finish, { once: true });
-    video.addEventListener('error', finish, { once: true });
     skipButton?.addEventListener('click', finish);
     soundButton?.addEventListener('click', async () => {
         try {
@@ -105,29 +103,50 @@
             soundButton.textContent = 'Tap to retry sound';
         }
     });
+    video.addEventListener('ended', finish, { once: true });
+    video.addEventListener('error', finish, { once: true });
 
-    // Attempt audible autoplay. If blocked, fall back to muted playback and show a sound control.
-    try {
-        const attempt = video.play();
-        if (attempt && typeof attempt.catch === 'function') {
-            attempt.catch(async () => {
-                if (finished) return;
+    // The MP4 is split into small text parts for reliable repository upload, then
+    // reconstructed locally in the browser. No external video host is required.
+    const parts = [
+        '/tr-login-intro-part-01.txt',
+        '/tr-login-intro-part-02.txt',
+        '/tr-login-intro-part-03.txt',
+        '/tr-login-intro-part-04.txt'
+    ];
+    async function startVideo() {
+        try {
+            const contents = await Promise.all(parts.map(async url => {
+                const response = await fetch(url, { cache: 'force-cache', credentials: 'same-origin' });
+                if (!response.ok) throw new Error('Intro media part unavailable: ' + url);
+                return (await response.text()).trim();
+            }));
+            const encoded = contents.join('').replace(/\s+/g, '');
+            const binary = atob(encoded);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const blob = new Blob([bytes], { type: 'video/mp4' });
+            objectUrl = URL.createObjectURL(blob);
+            video.src = objectUrl;
+            video.load();
+            video.volume = 0.85;
+            try {
+                await video.play();
+            } catch (_) {
                 video.muted = true;
                 if (soundButton) soundButton.hidden = false;
-                try { await video.play(); }
-                catch (_) {
+                try { await video.play(); } catch (_) {
                     if (soundButton) soundButton.textContent = 'Play intro with sound';
+                    throw new Error('Browser could not autoplay the intro.');
                 }
-            });
+            }
+            fallbackTimer = window.setTimeout(finish, 18000);
+        } catch (_) {
+            // Keep login/register usable even if media is blocked or unavailable.
+            finish();
         }
-    } catch (_) {
-        video.muted = true;
-        if (soundButton) soundButton.hidden = false;
-        video.play().catch(() => {});
     }
-
-    // Never trap visitors on the splash screen.
-    fallbackTimer = window.setTimeout(finish, 16000);
+    startVideo();
 })();
 </script>
 </body>
