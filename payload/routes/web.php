@@ -85,5 +85,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/settings/authentication', [AdminSettingsController::class, 'saveAuthentication'])->name('settings.authentication.save');
         Route::get('/settings/linkvertise', [AdminSettingsController::class, 'linkvertise'])->name('settings.linkvertise');
         Route::post('/settings/linkvertise', [AdminSettingsController::class, 'saveLinkvertise'])->name('settings.linkvertise.save');
+        Route::post('/settings/linkvertise/test', [AdminSettingsController::class, 'testLinkvertise'])->name('settings.linkvertise.test');
     });
 });
