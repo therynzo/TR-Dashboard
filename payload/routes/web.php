@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/servers', [ServerController::class, 'index'])->name('servers.index');
     Route::get('/servers/create', [ServerController::class, 'createForm'])->name('servers.create');
     Route::post('/servers', [ServerController::class, 'store'])->name('servers.store');
+    Route::get('/pterodactyl/discovery/{resource}', PterodactylDiscoveryController::class)->whereIn('resource', ['locations', 'nodes', 'nests', 'eggs', 'allocations'])->name('pterodactyl.discovery');
     Route::get('/servers/{server}', [ServerController::class, 'show'])->name('servers.show');
     Route::post('/servers/{server}/renew', [ServerController::class, 'renew'])->name('servers.renew');
 
@@ -74,6 +75,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/settings/pterodactyl', [AdminSettingsController::class, 'pterodactyl'])->name('settings.pterodactyl');
         Route::post('/settings/pterodactyl', [AdminSettingsController::class, 'savePterodactyl'])->name('settings.pterodactyl.save');
         Route::post('/settings/pterodactyl/test', [AdminSettingsController::class, 'testPterodactyl'])->name('settings.pterodactyl.test');
+        Route::post('/settings/pterodactyl/defaults', [AdminSettingsController::class, 'savePterodactylDefaults'])->name('settings.pterodactyl.defaults');
         Route::get('/settings/defaults', [AdminSettingsController::class, 'defaults'])->name('settings.defaults');
         Route::post('/settings/defaults', [AdminSettingsController::class, 'saveDefaults'])->name('settings.defaults.save');
         Route::get('/settings/authentication', [AdminSettingsController::class, 'authentication'])->name('settings.authentication');
