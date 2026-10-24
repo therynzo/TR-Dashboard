@@ -64,7 +64,7 @@ class PterodactylDiscoveryController extends Controller
                                 'user_editable' => (bool) ($v['user_editable'] ?? false),
                                 'rules' => (string) ($v['rules'] ?? ''),
                             ];
-                        }, data_get($item, 'relationships.variables.data', [])),
+                        }, data_get($item, 'relationships.variables.data', data_get($item, 'attributes.relationships.variables.data', []))),
                     ],
                     'allocations' => [
                         'id' => $id,
