@@ -250,7 +250,7 @@ class AdminSettingsController extends Controller
                 'hash' => $randomHash,
             ], '', '&', PHP_QUERY_RFC3986);
             $response = Http::connectTimeout(3)->timeout(8)->post($verifyUrl);
-            $body = strtoupper(trim(trim($response->body()), " \t\n\r\0\x0B\"'"));
+            $body = $this->normalizeLinkvertiseStatus($response->body());
 
             if (!$response->successful()) {
                 return back()->with('error', 'Linkvertise API returned HTTP ' . $response->status() . '. The token could not be confirmed. This can be a provider/network issue; retry shortly. No credits were awarded.');
@@ -272,6 +272,35 @@ class AdminSettingsController extends Controller
             ]);
             return back()->with('error', 'Could not reach Linkvertise verification API (connection, DNS, TLS, timeout, or provider issue). This test awarded no credits. Retry shortly.');
         }
+    }
+
+    /**
+     * Normalize the plain-text statuses and STATUS payloads returned by Linkvertise.
+     * Some responses use an object-like {"STATUS":FALSE} body rather than plain FALSE.
+     */
+    private function normalizeLinkvertiseStatus(string $body): string
+    {
+        if (preg_match('/["\']?STATUS["\']?\s*:\s*["\']?(TRUE|FALSE|WRONG_TOKEN|WRONG_HASH)["\']?/i', $body, $matches)) {
+            return strtoupper($matches[1]);
+        }
+
+        $decoded = json_decode($body, true);
+        if (is_array($decoded)) {
+            foreach (['STATUS', 'status'] as $key) {
+                if (!array_key_exists($key, $decoded)) {
+                    continue;
+                }
+                $value = $decoded[$key];
+                if (is_bool($value)) {
+                    return $value ? 'TRUE' : 'FALSE';
+                }
+                if (is_scalar($value)) {
+                    return strtoupper(trim((string) $value));
+                }
+            }
+        }
+
+        return strtoupper(trim(trim($body), " \t\n\r\0\x0B\"'"));
     }
 
     private function values(): array
