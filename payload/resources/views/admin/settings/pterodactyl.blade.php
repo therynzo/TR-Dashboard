@@ -32,8 +32,6 @@
       <div class="field"><label for="ptero_nest_id">Software category / Nest</label><select class="input" id="ptero_nest_id" name="ptero_nest_id" required><option value="">Load software categories first</option></select></div>
       <div class="field"><label for="ptero_egg_id">Software / Egg</label><select class="input" id="ptero_egg_id" name="ptero_egg_id" required><option value="">Select a software category first</option></select></div>
     </div>
-    <div class="field"><label for="ptero_allocation_id">Available allocation / port</label><select class="input" id="ptero_allocation_id" name="ptero_allocation_id" required><option value="">Select a node first</option></select><div class="field-help">Only unassigned allocations are listed. Pterodactyl re-checks availability during deployment.</div></div>
-
     <div class="field-row">
       <div class="field"><label for="ptero_docker_image">Docker image (from Egg)</label><input class="input" id="ptero_docker_image" name="ptero_docker_image" value="{{ old('ptero_docker_image',$settings['ptero_docker_image']) }}" required></div>
       <div class="field"><label for="ptero_startup">Startup command (from Egg)</label><input class="input" id="ptero_startup" name="ptero_startup" value="{{ old('ptero_startup',$settings['ptero_startup']) }}" required></div>
@@ -62,7 +60,7 @@
  const $ = id => document.getElementById(id);
  const selects = {
   location: $('ptero_location_id'), node: $('ptero_node_id'), nest: $('ptero_nest_id'),
-  egg: $('ptero_egg_id'), allocation: $('ptero_allocation_id')
+  egg: $('ptero_egg_id')
  };
  const status = $('pteroDiscoveryStatus');
  const saved = {
@@ -70,7 +68,6 @@
   node: @json((string) old('ptero_node_id', $settings['ptero_node_id'] ?? '')),
   nest: @json((string) old('ptero_nest_id', $settings['ptero_nest_id'] ?? '')),
   egg: @json((string) old('ptero_egg_id', $settings['ptero_egg_id'] ?? '')),
-  allocation: @json((string) old('ptero_allocation_id', $settings['ptero_allocation_id'] ?? ''))
  };
  let currentEggs = [];
  const setStatus = (message, isError=false) => {
@@ -99,20 +96,10 @@
  async function loadNodes(selected=saved.node) {
   const locationId=selects.location.value;
   fill(selects.node, [], '', x=>x.name, ()=>false, 'Loading nodes…');
-  fill(selects.allocation, [], '', x=>x.name, ()=>false, 'Select a node first');
   if (!locationId) { fill(selects.node, [], '', x=>x.name, ()=>false, 'Select a location first'); return; }
   const nodes=await fetchData('nodes',{location_id:locationId});
   fill(selects.node,nodes,selected,x=>x.name+(x.maintenance_mode?' (maintenance)':''),x=>x.maintenance_mode,'Choose a node');
   if (!selects.node.value && nodes.length===1 && !nodes[0].maintenance_mode) selects.node.value=String(nodes[0].id);
-  await loadAllocations(saved.allocation);
- }
- async function loadAllocations(selected=saved.allocation) {
-  const nodeId=selects.node.value;
-  if (!nodeId) { fill(selects.allocation, [], '', x=>x.name, ()=>false, 'Select a node first'); return; }
-  const items=await fetchData('allocations',{node_id:nodeId});
-  const free=items.filter(x=>!x.assigned);
-  fill(selects.allocation,free,selected,x=>(x.ip_alias||x.ip)+':'+x.port+(x.notes?' — '+x.notes:''),()=>false,'Choose an unassigned allocation');
-  if (!selects.allocation.value && free.length===1) selects.allocation.value=String(free[0].id);
  }
  async function loadEggs(selected=saved.egg) {
   const nestId=selects.nest.value;
@@ -128,7 +115,7 @@
   const egg=currentEggs.find(x=>String(x.id)===String(selects.egg.value));
   if (!egg) return;
   const images=egg.docker_images||{};
-  const image=Object.keys(images)[0]||'';
+  const image=Object.values(images)[0]||'';
   if (image) $('ptero_docker_image').value=image;
   if (egg.startup) $('ptero_startup').value=egg.startup;
   const env={};
@@ -144,12 +131,11 @@
    fill(selects.nest,nests,saved.nest,x=>x.name,()=>false,'Choose software category');
    await Promise.all([loadNodes(saved.node),loadEggs(saved.egg)]);
    applyEgg();
-   setStatus('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+currentEggs.length+' Eggs. Review selections, then save deployment defaults.');
+   setStatus('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+currentEggs.length+' Eggs. Free allocations are selected automatically when a server is deployed. Review selections, then save deployment defaults.');
   } catch(e) { setStatus(e.message||'Pterodactyl discovery failed.',true); }
   finally { $('pteroLoadData').disabled=false; }
  }
- selects.location.addEventListener('change',()=>{saved.node='';saved.allocation='';loadNodes('');});
- selects.node.addEventListener('change',()=>{saved.allocation='';loadAllocations('');});
+ selects.location.addEventListener('change',()=>{saved.node='';loadNodes('');});
  selects.nest.addEventListener('change',()=>{saved.egg='';loadEggs('');});
  selects.egg.addEventListener('change',applyEgg);
  $('pteroLoadData').addEventListener('click',loadPanelData);
