@@ -11,7 +11,8 @@ TR Dashboard is a Laravel-based hosting panel with user accounts, server managem
 - Pterodactyl Application API integration.
 - Server creation, renewal, and lifecycle management.
 - Credit system and redeem codes.
-- Admin management for users, servers, and settings.
+- Admin management for users, servers, and settings, including confirmed user deletion with safeguards.
+
 - Optional Discord and Google authentication.
 - Optional Linkvertise rewards.
 - VPS installation and update script.
