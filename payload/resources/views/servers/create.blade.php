@@ -22,7 +22,7 @@
         <div class="field"><label for="nest_id">Software category</label><select class="input" id="nest_id" name="nest_id" required><option value="">Loading software…</option></select><div class="field-help">For example, Minecraft, Discord bots, or other installed Eggs.</div></div>
         <div class="field"><label for="egg_id">Software / Egg</label><select class="input" id="egg_id" name="egg_id" required><option value="">Select a software category first</option></select></div>
       </div>
-      <div class="field"><label for="allocation_id">Available allocation / port</label><select class="input" id="allocation_id" name="allocation_id" required><option value="">Select a node first</option></select><div class="field-help">Only free allocations are offered. Availability is checked again during deployment.</div></div>
+      <div class="field"><label>Allocation</label><div class="field-help" id="allocationPreview" role="status" aria-live="polite">A free allocation will be selected automatically when you deploy.</div></div>
       <div class="settings-card" style="margin:5px 0 18px;padding:16px">
         <h3 style="margin:0 0 6px">Software configuration</h3>
         <p class="settings-desc">The selected Egg determines the Docker image, startup command, and environment variables.</p>
@@ -56,7 +56,8 @@
 <script>
 (() => {
  const $ = id => document.getElementById(id);
- const selects={location:$('location_id'),node:$('node_id'),nest:$('nest_id'),egg:$('egg_id'),allocation:$('allocation_id')};
+ const selects={location:$('location_id'),node:$('node_id'),nest:$('nest_id'),egg:$('egg_id')};
+ const allocationPreview=$('allocationPreview');
  const status=$('pteroCreateStatus');
  const envContainer=$('pteroEnvironmentFields');
  const saved={
@@ -64,7 +65,6 @@
   node:@json((string) old('node_id',\App\Support\Settings::get('ptero_node_id',''))),
   nest:@json((string) old('nest_id',\App\Support\Settings::get('ptero_nest_id',''))),
   egg:@json((string) old('egg_id',\App\Support\Settings::get('ptero_egg_id',''))),
-  allocation:@json((string) old('allocation_id',\App\Support\Settings::get('ptero_allocation_id','')))
  };
  let eggs=[];
  let loading=false;
@@ -87,19 +87,27 @@
  }
  async function loadNodes(selected=saved.node) {
   fill(selects.node,[],'',x=>x.name,()=>false,'Loading nodes…');
-  fill(selects.allocation,[],'',x=>x.name,()=>false,'Select a node first');
   if(!selects.location.value){fill(selects.node,[],'',x=>x.name,()=>false,'Select a location first');return;}
   const nodes=await fetchData('nodes',{location_id:selects.location.value});
   fill(selects.node,nodes,selected,x=>x.name+(x.maintenance_mode?' (maintenance)':''),x=>x.maintenance_mode,'Choose a node');
   if(!selects.node.value){const healthy=nodes.filter(x=>!x.maintenance_mode);if(healthy.length===1)selects.node.value=String(healthy[0].id);}
-  await loadAllocations(saved.allocation);
+  await loadAllocationPreview();
  }
- async function loadAllocations(selected=saved.allocation) {
-  if(!selects.node.value){fill(selects.allocation,[],'',x=>x.name,()=>false,'Select a node first');return;}
-  const all=await fetchData('allocations',{node_id:selects.node.value});
-  const free=all.filter(x=>!x.assigned);
-  fill(selects.allocation,free,selected,x=>(x.ip_alias||x.ip)+':'+x.port+(x.notes?' — '+x.notes:''),()=>false,'Choose a free allocation');
-  if(!selects.allocation.value&&free.length===1)selects.allocation.value=String(free[0].id);
+ async function loadAllocationPreview() {
+  const nodeId=selects.node.value;
+  if(!nodeId) {
+   allocationPreview.textContent='Choose a node; a free allocation will be selected automatically.';
+   return;
+  }
+  allocationPreview.textContent='Checking free allocations on the selected node…';
+  const items=await fetchData('allocations',{node_id:nodeId});
+  const free=items.filter(x=>!x.assigned).sort((a,b)=>(Number(a.port)||0)-(Number(b.port)||0));
+  if(!free.length) {
+   allocationPreview.textContent='No free allocation is currently available on this node. Choose another node or ask the administrator to add free allocations.';
+   return;
+  }
+  const next=free[0];
+  allocationPreview.textContent='Free allocation detected: '+(next.ip_alias||next.ip)+':'+next.port+'. The server will automatically re-check and reserve a free allocation when deployed.';
  }
  async function loadEggs(selected=saved.egg) {
   fill(selects.egg,[],'',x=>x.name,()=>false,'Loading Eggs…');
@@ -118,7 +126,7 @@
   const images=egg.docker_images||{};
   const envSummary=document.createElement('p');
   envSummary.className='field-help';
-  envSummary.textContent='Docker image: '+(Object.keys(images)[0]||'Egg default')+' · Startup command is managed by the selected Egg.';
+  envSummary.textContent='Docker image: '+(Object.values(images)[0]||'Egg default')+' · Startup command is managed by the selected Egg.';
   envContainer.appendChild(envSummary);
   let shown=0;
   variables.forEach(v=>{
@@ -148,18 +156,18 @@
    fill(selects.location,locations,saved.location,x=>x.name,()=>false,'Choose a location');
    fill(selects.nest,nests,saved.nest,x=>x.name,()=>false,'Choose software category');
    await Promise.all([loadNodes(saved.node),loadEggs(saved.egg)]);
-   say('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+eggs.length+' Eggs. Choose a free allocation then deploy.');
+   say('Loaded '+locations.length+' locations, '+nests.length+' software categories, '+eggs.length+' Eggs. A free allocation is selected automatically at deployment.');
   }catch(e){say(e.message||'Could not load Pterodactyl options.',true);}
   finally{loading=false;$('pteroReloadOptions').disabled=false;$('pteroDeployButton').disabled=false;}
  }
- selects.location.addEventListener('change',()=>{saved.node='';saved.allocation='';loadNodes('');});
- selects.node.addEventListener('change',()=>{saved.allocation='';loadAllocations('');});
+ selects.location.addEventListener('change',()=>{saved.node='';loadNodes('');});
+ selects.node.addEventListener('change',()=>{loadAllocationPreview().catch(e=>say(e.message||'Could not check free allocations.',true));});
  selects.nest.addEventListener('change',()=>{saved.egg='';loadEggs('');});
  selects.egg.addEventListener('change',renderEggEnvironment);
- $('pteroReloadOptions').addEventListener('click',()=>{saved.location=selects.location.value;saved.node=selects.node.value;saved.nest=selects.nest.value;saved.egg=selects.egg.value;saved.allocation=selects.allocation.value;loadPanel();});
+ $('pteroReloadOptions').addEventListener('click',()=>{saved.location=selects.location.value;saved.node=selects.node.value;saved.nest=selects.nest.value;saved.egg=selects.egg.value;loadPanel();});
  $('pteroCreateForm').addEventListener('submit',event=>{
-  if(!selects.location.value||!selects.node.value||!selects.nest.value||!selects.egg.value||!selects.allocation.value){
-   event.preventDefault();say('Select a location, node, software Egg, and free allocation before deploying.',true);
+  if(!selects.location.value||!selects.node.value||!selects.nest.value||!selects.egg.value){
+   event.preventDefault();say('Select a location, node, and software Egg before deploying. A free allocation is automatic.',true);
   }
  });
  loadPanel();
