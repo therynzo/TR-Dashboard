@@ -80,12 +80,43 @@ class PterodactylClient
         return $this->listRecords('nests');
     }
 
+    /**
+     * Normalize Egg relationship data. The Application API places relationships
+     * inside attributes.relationships; the dashboard uses a root relationships
+     * path for its UI, so expose both shapes consistently.
+     */
+    private function normalizeEggRecord(array $record): array
+    {
+        if (isset($record['data']) && is_array($record['data']) && isset($record['data']['attributes'])) {
+            $record = $record['data'];
+        }
+
+        $variables = data_get($record, 'attributes.relationships.variables.data');
+        if (!is_array($variables)) {
+            $variables = data_get($record, 'relationships.variables.data', []);
+        }
+
+        $record['relationships'] = is_array($record['relationships'] ?? null)
+            ? $record['relationships']
+            : [];
+        $record['relationships']['variables'] = is_array($record['relationships']['variables'] ?? null)
+            ? $record['relationships']['variables']
+            : [];
+        $record['relationships']['variables']['data'] = is_array($variables) ? $variables : [];
+
+        return $record;
+    }
+
     public function eggs(int $nestId): array
     {
         if ($nestId < 1) {
             throw new RuntimeException('Select a valid Pterodactyl Nest/software category first.');
         }
-        return $this->listRecords('nests/' . $nestId . '/eggs', ['include' => 'variables']);
+
+        return array_map(
+            fn (array $record) => $this->normalizeEggRecord($record),
+            $this->listRecords('nests/' . $nestId . '/eggs', ['include' => 'variables'])
+        );
     }
 
     public function allocations(int $nodeId): array
@@ -98,12 +129,26 @@ class PterodactylClient
 
     public function egg(int $nestId, int $eggId): array
     {
-        foreach ($this->eggs($nestId) as $record) {
-            if ((int) data_get($record, 'attributes.id', 0) === $eggId) {
-                return $record;
-            }
+        if ($nestId < 1 || $eggId < 1) {
+            throw new RuntimeException('Select a valid Pterodactyl software category and Egg.');
         }
-        throw new RuntimeException('The selected Egg was not found in the selected software category.');
+
+        // Fetch the selected Egg directly, including variables, rather than relying
+        // only on the paginated listing relationship being present.
+        $response = $this->request()->get('nests/' . $nestId . '/eggs/' . $eggId, ['include' => 'variables']);
+        $response->throw();
+        $record = $response->json();
+
+        if (isset($record['data']) && is_array($record['data']) && isset($record['data']['attributes'])) {
+            $record = $record['data'];
+        }
+
+        $record = $this->normalizeEggRecord(is_array($record) ? $record : []);
+        if ((int) data_get($record, 'attributes.id', 0) !== $eggId) {
+            throw new RuntimeException('The selected Egg was not returned by Pterodactyl. Reload the software list and try again.');
+        }
+
+        return $record;
     }
 
     public function createUser(string $username, string $email, string $password): int
