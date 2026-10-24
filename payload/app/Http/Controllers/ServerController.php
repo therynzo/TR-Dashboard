@@ -120,7 +120,7 @@ class ServerController extends Controller
 
                 $editable = (bool) ($v['user_editable'] ?? false);
                 $eggDefault = trim((string) ($v['default_value'] ?? ''));
-                $configuredDefault = trim((string) ($configuredEnvironment[$key] ?? ''));
+                $configuredDefault = trim((string) ($configuredEnvironment[$key] ?? $configuredEnvironment[strtoupper($key)] ?? ''));
                 if ($editable && array_key_exists($key, $submittedEnvironment)) {
                     $value = (string) $submittedEnvironment[$key];
                 } elseif ($configuredDefault !== '') {
@@ -130,7 +130,7 @@ class ServerController extends Controller
                 } elseif ($eggDefault !== '') {
                     $value = (string) ($v['default_value'] ?? '');
                 } else {
-                    $value = (string) ($knownEnvironmentDefaults[$key] ?? '');
+                    $value = (string) ($knownEnvironmentDefaults[strtoupper($key)] ?? '');
                 }
 
                 $rules = (string) ($v['rules'] ?? 'nullable|string');
