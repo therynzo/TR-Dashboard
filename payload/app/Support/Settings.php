@@ -84,6 +84,8 @@ class Settings
             // Pterodactyl Application API and deployment profile
             'ptero_url' => '',
             'ptero_api_key' => '',
+            'ptero_location_id' => '',
+            'ptero_node_id' => '',
             'ptero_nest_id' => '',
             'ptero_egg_id' => '',
             'ptero_allocation_id' => '',
