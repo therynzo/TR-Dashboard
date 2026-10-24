@@ -120,7 +120,7 @@
   currentEggs=[];
   if (!nestId) { fill(selects.egg, [], '', x=>x.name, ()=>false, 'Select software first'); return; }
   currentEggs=await fetchData('eggs',{nest_id:nestId});
-  fill(selects.egg,currentEggs,selected,x=>x.name,'','Choose software / Egg');
+  fill(selects.egg,currentEggs,selected,x=>x.name,()=>false,'Choose software / Egg');
   if (!selects.egg.value && currentEggs.length===1) selects.egg.value=String(currentEggs[0].id);
   applyEgg();
  }
